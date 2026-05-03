@@ -18,30 +18,31 @@ const { chromium } = require('playwright');
       timeout: 30000,
     });
 
-    await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
+    // Wait for the loading scene – this element is in the new HTML
+    await page.waitForSelector('#s-loading', { state: 'visible', timeout: 15000 });
 
-    // Optional: take a debug screenshot
+    // Optional: take a debug screenshot (download it if something goes wrong)
     await page.screenshot({ path: 'page-loaded.png' });
 
-    // Record the full animation loop (~80 seconds)
-    await page.waitForTimeout(80000);
+    // Record the full cinematic walkthrough (≈130 sec, we give 160)
+    const totalDurationMs = 160000;
+    console.log(`Recording for ${totalDurationMs / 1000} seconds…`);
+    await page.waitForTimeout(totalDurationMs);
 
   } catch (error) {
     console.error('Error occurred:', error.message);
     await page.screenshot({ path: 'error.png' });
   }
 
-  // Close the context – this finalises the random video file
   await context.close();
+  await browser.close();
 
-  // Now rename the video to a predictable name
+  // Save the video with a predictable name
   const video = page.video();
   if (video) {
     await video.saveAs('video.webm');
     console.log('Video saved as video.webm');
   } else {
-    console.error('No video object found – something went wrong');
+    console.error('No video object found');
   }
-
-  await browser.close();
 })();
