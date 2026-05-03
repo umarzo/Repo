@@ -18,13 +18,13 @@ const { chromium } = require('playwright');
       timeout: 30000,
     });
 
-    // Wait for the loading scene – this element is in the new HTML
+    // Wait for the first scene to be visible (this is reliable in the new HTML)
     await page.waitForSelector('#s-loading', { state: 'visible', timeout: 15000 });
 
-    // Optional: take a debug screenshot (download it if something goes wrong)
+    // Optional debug screenshot
     await page.screenshot({ path: 'page-loaded.png' });
 
-    // Record the full cinematic walkthrough (≈130 sec, we give 160)
+    // Record the full cinematic walkthrough (currently ~130 sec, we give 160)
     const totalDurationMs = 160000;
     console.log(`Recording for ${totalDurationMs / 1000} seconds…`);
     await page.waitForTimeout(totalDurationMs);
@@ -34,15 +34,20 @@ const { chromium } = require('playwright');
     await page.screenshot({ path: 'error.png' });
   }
 
-  await context.close();
-  await browser.close();
-
-  // Save the video with a predictable name
+  // ✅ Get the video object before closing anything
   const video = page.video();
+
+  // Close the context (this finalises the video file)
+  await context.close();
+
+  // Save the video to a predictable name (browser is still running here)
   if (video) {
     await video.saveAs('video.webm');
     console.log('Video saved as video.webm');
   } else {
     console.error('No video object found');
   }
+
+  // Now close the browser
+  await browser.close();
 })();
