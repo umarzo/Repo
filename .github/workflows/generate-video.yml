@@ -1,0 +1,38 @@
+name: Generate Desktop Video
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm init -y && npm install playwright @playwright/test
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Start HTTP server
+        run: python3 -m http.server 8080 &
+        # The server runs in the background
+
+      - name: Record video
+        run: node record-video.js
+
+      - name: Upload video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-video
+          path: video.mp4   # or video.webm
