@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golex — Meet Your People</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ════════════════════════════════════════════
+   RESET & GOLEX EXACT DESIGN TOKENS
+════════════════════════════════════════════ */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  /* Light theme — exact Golex source */
+  --bg:#EEF2F8;
+  --bg2:#E4EAF4;
+  --surface:#FFFFFF;
+  --border:rgba(15,23,42,0.08);
+  --border-s:rgba(15,23,42,0.05);
+  --accent:#2357E8;
+  --accent-d:#1A46CC;
+  --accent-l:#3B7CF6;
+  --accent2:#059669;
+  --accent2-l:#10B981;
+  --accent3:#4F46E5;
+  --accent3-l:#6366F1;
+  --danger:#DC2626;
+  --danger-l:#EF4444;
+  --warning:#D97706;
+  --warning-l:#F59E0B;
+  --text:#0F172A;
+  --text2:#475569;
+  --muted:#94A3B8;
+  /* App (dark) surface colors */
+  --app-bg:#060A12;
+  --app-s1:#0A0F1E;
+  --app-s2:#0C1120;
+  --app-border:rgba(148,163,200,0.07);
+  --app-border2:rgba(148,163,200,0.13);
+  --app-text:#DDE5F4;
+  --app-text2:#7E94B8;
+  --app-muted:#3D4F6A;
+  --blue:#4F8EF7;
+  --cyan:#22D3EE;
+  --purple:#8B5CF6;
+  --green:#10B981;
+  --amber:#F59E0B;
+  --red:#EF4444;
+  --pink:#EC4899;
+  /* Typography */
+  --fb:'Syne',sans-serif;
+  --fu:'Outfit',sans-serif;
+  --fm:'JetBrains Mono',monospace;
+  /* Shape */
+  --r-xl:24px; --r-lg:18px; --r-md:14px; --r-sm:12px; --r-xs:8px; --r-pill:9999px;
+  /* Shadow — light theme, depth */
+  --sh-sm:0 2px 8px rgba(15,23,42,0.10),0 1px 3px rgba(35,87,232,0.07);
+  --sh-md:0 6px 24px rgba(15,23,42,0.12),0 2px 8px rgba(35,87,232,0.09);
+  --sh-lg:0 20px 56px rgba(15,23,42,0.14),0 8px 20px rgba(35,87,232,0.10),0 0 0 1px rgba(15,23,42,0.04);
+  --sh-phone:0 40px 80px rgba(15,23,42,0.22),0 16px 32px rgba(35,87,232,0.14),0 0 0 1px rgba(15,23,42,0.06);
+  --ease:cubic-bezier(0.4,0,0.2,1);
+  --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
+}
+
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--fu);}
+button{font-family:inherit;cursor:pointer;}
+
+/* ════════════════════════════════════════════
+   AMBIENT BACKGROUND — CSS gradient mesh
+   Linear.app / Vercel style — no heavy JS
+════════════════════════════════════════════ */
+#bg-mesh{
+  position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(35,87,232,0.09) 0%, transparent 65%),
+    radial-gradient(ellipse 60% 50% at 88% 88%, rgba(79,70,229,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 45% at 50% 50%, rgba(34,211,238,0.05) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 35% at 80% 15%, rgba(16,185,129,0.06) 0%, transparent 55%),
+    linear-gradient(160deg,#EEF2F8 0%,#EBF0F9 40%,#EDF1F8 70%,#EEF2F8 100%);
+  animation:meshShift 14s ease-in-out infinite alternate;
+}
+@keyframes meshShift{
+  0%{background:radial-gradient(ellipse 80% 60% at 15% 10%,rgba(35,87,232,0.09) 0%,transparent 65%),radial-gradient(ellipse 60% 50% at 88% 88%,rgba(79,70,229,0.08) 0%,transparent 60%),radial-gradient(ellipse 55% 45% at 50% 50%,rgba(34,211,238,0.05) 0%,transparent 70%),radial-gradient(ellipse 40% 35% at 80% 15%,rgba(16,185,129,0.06) 0%,transparent 55%),linear-gradient(160deg,#EEF2F8 0%,#EBF0F9 40%,#EDF1F8 70%,#EEF2F8 100%);}
+  100%{background:radial-gradient(ellipse 75% 65% at 22% 85%,rgba(35,87,232,0.08) 0%,transparent 62%),radial-gradient(ellipse 65% 55% at 78% 12%,rgba(79,70,229,0.07) 0%,transparent 58%),radial-gradient(ellipse 50% 50% at 35% 40%,rgba(34,211,238,0.05) 0%,transparent 65%),radial-gradient(ellipse 45% 40% at 92% 60%,rgba(16,185,129,0.06) 0%,transparent 52%),linear-gradient(160deg,#EDF1F8 0%,#E9EFF7 40%,#EEF2F8 70%,#EDF1F8 100%);}
+}
+
+/* Subtle dot grid overlay */
+#bg-grid{
+  position:fixed;inset:0;z-index:1;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(35,87,232,0.13) 1px,transparent 1px);
+  background-size:28px 28px;
+  mask-image:radial-gradient(ellipse 100% 100% at 50% 50%,rgba(0,0,0,0.25) 0%,transparent 80%);
+  -webkit-mask-image:radial-gradient(ellipse 100% 100% at 50% 50%,rgba(0,0,0,0.25) 0%,transparent 80%);
+}
+
+/* Flash cut */
+#flash{position:fixed;inset:0;background:white;opacity:0;z-index:90;pointer-events:none;transition:opacity .4s;}
+
+/* ════════════════════════════════════════════
+   AD CONTAINER & SCENES
+════════════════════════════════════════════ */
+#ad{position:fixed;inset:0;z-index:10;}
+.sc{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.5s var(--ease),transform 0.5s var(--ease);
+  transform:translateY(6px);padding:20px;
+}
+.sc.active{opacity:1;pointer-events:auto;transform:translateY(0);}
+
+/* ════════════════════════════════════════════
+   PROGRESS BAR & DOTS
+════════════════════════════════════════════ */
+#pgbar{
+  position:fixed;top:0;left:0;height:2.5px;
+  background:linear-gradient(90deg,var(--accent),var(--cyan),var(--purple));
+  z-index:200;transition:width 0.12s linear;
+  box-shadow:0 0 8px rgba(35,87,232,0.5);
+}
+#dots{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  display:flex;gap:5px;z-index:200;
+}
+.dot{width:5px;height:5px;border-radius:50%;background:rgba(15,23,42,0.18);transition:all .3s ease;}
+.dot.on{background:var(--accent);box-shadow:0 0 6px rgba(35,87,232,0.5);width:18px;border-radius:3px;}
+
+/* ════════════════════════════════════════════
+   AD TYPOGRAPHY — dark on light
+════════════════════════════════════════════ */
+.eyebrow{
+  font-family:var(--fm);font-size:10px;letter-spacing:.45em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:10px;
+  opacity:0;animation:riseIn .5s ease both;
+}
+.headline{
+  font-family:var(--fb);font-size:clamp(28px,5vw,56px);font-weight:800;
+  color:var(--text);line-height:1.08;letter-spacing:-.03em;
+  opacity:0;animation:riseIn .6s .1s ease both;
+}
+.headline .g{background:linear-gradient(135deg,var(--accent),var(--cyan));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.headline .p{background:linear-gradient(135deg,var(--purple),var(--pink));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.headline .e{background:linear-gradient(135deg,var(--accent2),var(--cyan));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.subtext{
+  font-size:clamp(12px,1.4vw,15px);color:var(--text2);
+  line-height:1.8;margin-top:14px;
+  opacity:0;animation:riseIn .6s .25s ease both;
+}
+
+/* ════════════════════════════════════════════
+   KEYFRAMES
+════════════════════════════════════════════ */
+@keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes logoReveal{0%{opacity:0;transform:scale(.7) translateY(10px)}70%{transform:scale(1.03)}100%{opacity:1;transform:none}}
+@keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes msgPop{from{opacity:0;transform:translateY(7px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes floatUp{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+@keyframes floatUpAlt{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes storyIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+@keyframes waveBar{from{height:3px}to{height:22px}}
+@keyframes voiceW{from{height:4px}to{height:44px}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes recPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.35)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
+@keyframes drawSVG{0%{stroke-dashoffset:600;opacity:0}15%{opacity:1}80%{opacity:.9}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes kbIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(80px) rotate(360deg);opacity:0}}
+.confetti-piece{position:fixed;width:7px;height:7px;animation:confettiFall 1.4s ease forwards;}
+@keyframes orbDrift{0%,100%{transform:translate(0,0)}33%{transform:translate(6px,-8px)}66%{transform:translate(-4px,5px)}}
+
+/* Floating ambient orbs behind content */
+.ambient-orb{
+  position:fixed;border-radius:50%;pointer-events:none;z-index:2;
+  animation:orbDrift linear infinite;
+}
+
+/* ════════════════════════════════════════════
+   SCENE 1 — LOGO REVEAL
+════════════════════════════════════════════ */
+.logo-ring{
+  position:absolute;border-radius:50%;
+  border:1px solid rgba(35,87,232,0.12);
+  top:50%;left:50%;transform:translate(-50%,-50%);
+}
+.logo-ring:nth-child(1){width:480px;height:480px;animation:spin 22s linear infinite;}
+.logo-ring:nth-child(2){width:340px;height:340px;animation:spin 15s linear infinite reverse;border-color:rgba(79,70,229,0.10);}
+.logo-ring:nth-child(3){width:220px;height:220px;animation:spin 10s linear infinite;border-color:rgba(34,211,238,0.09);}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.ring-dot{position:absolute;width:6px;height:6px;border-radius:50%;top:-3px;left:50%;transform:translateX(-50%);}
+
+.logo-glow{
+  position:absolute;width:260px;height:260px;border-radius:50%;
+  background:radial-gradient(circle,rgba(35,87,232,0.18) 0%,transparent 70%);
+  filter:blur(40px);top:50%;left:50%;transform:translate(-50%,-50%);
+  animation:orbDrift 8s ease-in-out infinite;
+}
+.logo-text{
+  font-family:var(--fb);font-size:clamp(80px,16vw,180px);font-weight:800;
+  letter-spacing:-.05em;line-height:1;text-align:center;position:relative;z-index:1;
+  background:linear-gradient(135deg,var(--accent-d) 0%,var(--accent) 40%,var(--accent-l) 70%,var(--cyan) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  opacity:0;animation:logoReveal 1s .15s cubic-bezier(.34,1.56,.64,1) both;
+  filter:drop-shadow(0 2px 24px rgba(35,87,232,0.20));
+}
+.logo-tagline{
+  font-family:var(--fm);font-size:clamp(9px,1.2vw,12px);letter-spacing:.55em;
+  text-transform:uppercase;color:var(--muted);margin-top:18px;
+  opacity:0;animation:riseIn .6s 1.1s ease both;position:relative;z-index:1;
+}
+
+/* ════════════════════════════════════════════
+   PHONE FRAME — reusable dark app shell
+════════════════════════════════════════════ */
+.phone{
+  background:var(--app-bg);
+  border:1px solid rgba(15,23,42,0.15);
+  border-radius:28px;overflow:hidden;
+  box-shadow:var(--sh-phone);
+  display:flex;flex-direction:column;
+}
+.phone-anim-a{animation:floatUp 5.5s ease-in-out infinite;}
+.phone-anim-b{animation:floatUpAlt 6s .5s ease-in-out infinite;}
+
+/* App-internal colors */
+.app-surface{background:var(--app-s1);}
+.app-border{border-color:var(--app-border);}
+
+/* ════════════════════════════════════════════
+   SCENE 2 — DIRECTORY
+════════════════════════════════════════════ */
+.dir-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:860px;width:92vw;}
+.dcard{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:16px 12px;display:flex;flex-direction:column;align-items:center;gap:7px;
+  opacity:0;animation:cardIn .5s ease both;
+  box-shadow:var(--sh-sm);position:relative;overflow:hidden;
+  transition:box-shadow .2s,transform .2s;
+}
+.dcard::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(35,87,232,0.25),transparent);}
+.dav{
+  width:46px;height:46px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-family:var(--fb);font-size:15px;font-weight:800;color:#fff;
+  position:relative;
+}
+.ondot{position:absolute;bottom:1px;right:1px;width:9px;height:9px;border-radius:50%;
+  background:var(--accent2-l);border:2px solid var(--surface);
+  box-shadow:0 0 5px rgba(16,185,129,0.5);}
+.dname{font-family:var(--fb);font-size:12px;font-weight:700;color:var(--text);text-align:center;}
+.drole{font-family:var(--fm);font-size:9px;color:var(--muted);margin-top:-3px;}
+.dtags{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;}
+.dtag{font-family:var(--fm);font-size:9px;padding:2px 8px;border-radius:var(--r-pill);}
+.tb{background:rgba(35,87,232,0.08);color:var(--accent);border:1px solid rgba(35,87,232,0.18);}
+.tc{background:rgba(6,182,212,0.08);color:#0891B2;border:1px solid rgba(6,182,212,0.18);}
+.tp{background:rgba(139,92,246,0.08);color:var(--purple);border:1px solid rgba(139,92,246,0.18);}
+.tg{background:rgba(5,150,105,0.08);color:var(--accent2);border:1px solid rgba(5,150,105,0.18);}
+.ta{background:rgba(217,119,6,0.08);color:var(--warning);border:1px solid rgba(217,119,6,0.18);}
+.drep-val{font-family:var(--fm);font-size:9px;color:var(--warning);font-weight:700;}
+.dendorse{font-family:var(--fm);font-size:9px;color:var(--accent3-l);}
+.dmsg-btn{
+  margin-top:3px;font-size:10px;font-weight:700;padding:5px 14px;
+  border-radius:var(--r-pill);border:none;
+  background:var(--accent);color:#fff;
+  box-shadow:0 2px 8px rgba(35,87,232,0.28);
+}
+
+/* ════════════════════════════════════════════
+   SCENE 3 — DM CHAT
+════════════════════════════════════════════ */
+#s3{flex-direction:row;gap:clamp(24px,5vw,64px);}
+.chat-phone{width:clamp(250px,30vw,300px);}
+.cphdr{
+  padding:12px 14px;background:var(--app-s1);
+  border-bottom:1px solid var(--app-border);
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.chav{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-family:var(--fb);font-size:12px;font-weight:800;color:#fff;position:relative;}
+.chav .ondot{border-color:var(--app-s1);}
+.chname{font-size:12px;font-weight:700;color:var(--app-text);font-family:var(--fu);}
+.chskill{font-family:var(--fm);font-size:9px;color:var(--cyan);}
+.chhdr-acts{margin-left:auto;display:flex;gap:8px;}
+.chhdr-act{
+  width:28px;height:28px;border-radius:var(--r-xs);
+  border:1px solid var(--app-border2);background:rgba(255,255,255,.04);
+  display:flex;align-items:center;justify-content:center;color:var(--app-text2);
+}
+.chat-msgs{
+  padding:12px 10px;display:flex;flex-direction:column;gap:8px;
+  min-height:260px;max-height:260px;overflow:hidden;flex:1;
+  background:var(--app-bg);
+}
+.msg{max-width:85%;opacity:0;transform:translateY(7px) scale(.97);}
+.msg.them{align-self:flex-start;animation:msgPop .35s ease both;}
+.msg.me{align-self:flex-end;animation:msgPop .35s ease both;}
+.mbub{padding:9px 12px;font-size:11.5px;line-height:1.55;}
+.msg.them .mbub{
+  background:var(--app-s2);border:1px solid var(--app-border2);
+  border-radius:4px var(--r-lg) var(--r-lg) var(--r-lg);color:var(--app-text);
+}
+.msg.me .mbub{
+  background:linear-gradient(135deg,var(--blue),#2357E8);color:#fff;
+  border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);
+  box-shadow:0 4px 14px rgba(79,142,247,.3);
+}
+.mtime{font-family:var(--fm);font-size:9px;color:var(--app-muted);margin-top:3px;}
+.msg.me .mtime{text-align:right;}
+/* Real Golex input bar */
+.cfinput{
+  padding:8px 10px 10px;border-top:1px solid var(--app-border);
+  display:flex;gap:5px;align-items:flex-end;flex-shrink:0;background:var(--app-s1);
+}
+.ci-btn{
+  width:33px;height:33px;border-radius:var(--r-xs);
+  border:1px solid var(--app-border2);background:rgba(255,255,255,.03);
+  display:flex;align-items:center;justify-content:center;color:var(--app-text2);flex-shrink:0;
+}
+.ci-wrap{flex:1;}
+.cinp{
+  width:100%;background:rgba(255,255,255,.05);border:1px solid var(--app-border);
+  border-radius:var(--r-sm);padding:8px 11px;font-size:11px;color:var(--app-muted);
+  font-family:var(--fu);
+}
+.csend{
+  width:33px;height:33px;border-radius:var(--r-xs);border:none;
+  background:linear-gradient(135deg,var(--blue),#2357E8);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  box-shadow:0 3px 10px rgba(79,142,247,.35);
+}
+
+/* ════════════════════════════════════════════
+   SCENE 4 — VIDEO CALL
+════════════════════════════════════════════ */
+.call-box{
+  width:min(760px,92vw);background:var(--app-s1);
+  border:1px solid rgba(15,23,42,0.12);border-radius:22px;overflow:hidden;
+  box-shadow:var(--sh-lg);
+}
+.callgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px;height:320px;padding:3px;background:var(--app-bg);}
+.ctile{border-radius:13px;position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:10px;}
+.ctbg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+.ctav{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fb);font-size:20px;font-weight:800;color:#fff;}
+.cnbadge{position:relative;z-index:1;background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:600;display:flex;align-items:center;gap:5px;color:var(--app-text);font-family:var(--fu);}
+.cwave{display:flex;gap:2px;align-items:center;height:13px;}
+.cwb{width:3px;border-radius:2px;background:var(--green);animation:waveBar .7s ease-in-out infinite alternate;}
+.callctrl{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;background:var(--app-bg);border-top:1px solid var(--app-border);}
+.cbtn{width:42px;height:42px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;transition:transform .2s;}
+.cbtn:hover{transform:scale(1.08);}
+.cbtn.mute{background:rgba(255,255,255,.08);}
+.cbtn.vid{background:rgba(79,142,247,.18);}
+.cbtn.scr{background:rgba(139,92,246,.14);}
+.cbtn.react{background:rgba(245,158,11,.10);}
+.cbtn.cht{background:rgba(34,211,238,.08);}
+.cbtn.hng{background:#DC2626;box-shadow:0 4px 18px rgba(220,38,38,.4);color:#fff;}
+
+/* ════════════════════════════════════════════
+   SCENE 5 — EXPLORE (dark phone on light bg)
+════════════════════════════════════════════ */
+#s5{flex-direction:row;gap:clamp(20px,5vw,64px);}
+.explore-phone{width:clamp(265px,30vw,305px);}
+.stories-bar{padding:10px 12px 8px;border-bottom:1px solid var(--app-border);display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;flex-shrink:0;background:var(--app-s1);}
+.stories-bar::-webkit-scrollbar{display:none;}
+.story-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;}
+.story-ring{width:36px;height:36px;border-radius:50%;padding:2px;display:flex;align-items:center;justify-content:center;animation:storyIn .4s var(--ease-spring) both;}
+.story-ring.active{background:linear-gradient(135deg,var(--blue),var(--cyan),var(--purple));}
+.story-ring.add{background:var(--app-s2);border:1.5px dashed rgba(79,142,247,.3);}
+.story-av{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fb);font-size:11px;font-weight:800;color:#fff;border:2px solid var(--app-bg);}
+.story-lbl{font-size:8px;color:var(--app-text2);font-family:var(--fm);white-space:nowrap;max-width:38px;overflow:hidden;text-overflow:ellipsis;text-align:center;}
+.ex-top{padding:8px 12px;border-bottom:1px solid var(--app-border);flex-shrink:0;background:var(--app-s1);}
+.ex-search-row{display:flex;gap:5px;align-items:center;margin-bottom:6px;}
+.ex-search{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--app-border2);border-radius:var(--r-sm);padding:6px 10px;font-size:10px;color:var(--app-muted);font-family:var(--fu);}
+.ex-sort{background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.22);border-radius:var(--r-xs);padding:4px 7px;font-size:9px;font-family:var(--fm);color:var(--blue);}
+.ex-saved{width:26px;height:26px;border-radius:var(--r-xs);border:1px solid var(--app-border2);background:rgba(255,255,255,.03);display:flex;align-items:center;justify-content:center;color:var(--app-text2);}
+.ex-filter-btn{border:1px solid var(--app-border2);background:rgba(255,255,255,.03);border-radius:var(--r-xs);padding:4px 8px;font-size:9px;font-family:var(--fm);color:var(--app-muted);display:flex;align-items:center;gap:3px;}
+.ex-tabs{display:flex;border-bottom:1px solid var(--app-border);background:var(--app-s1);}
+.ex-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;padding:7px 0;font-size:9px;font-family:var(--fm);letter-spacing:.4px;text-transform:uppercase;color:var(--app-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;}
+.ex-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.ex-feed{flex:1;overflow-y:auto;scrollbar-width:none;background:var(--app-bg);}
+.ex-feed::-webkit-scrollbar{display:none;}
+.post-card{padding:13px 13px 9px;border-bottom:1px solid var(--app-border);}
+.pc-header{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+.pc-av{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--fb);font-size:11px;font-weight:800;color:#fff;}
+.pc-name{font-size:11px;font-weight:700;color:var(--app-text);}
+.pc-sub{font-family:var(--fm);font-size:8px;color:var(--app-text2);}
+.pc-badge{font-family:var(--fm);font-size:8px;padding:2px 7px;border-radius:var(--r-pill);background:rgba(79,142,247,.12);color:var(--blue);border:1px solid rgba(79,142,247,.22);}
+.pc-body{font-size:10.5px;line-height:1.6;color:var(--app-text);margin-bottom:8px;}
+.pc-tag-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;}
+.pc-tag{font-family:var(--fm);font-size:8px;padding:2px 7px;border-radius:var(--r-pill);}
+.pc-actions{display:flex;align-items:center;gap:5px;}
+.pc-act{display:flex;align-items:center;gap:3px;font-family:var(--fm);font-size:8px;color:var(--app-text2);padding:3px 8px;border-radius:var(--r-pill);border:1px solid var(--app-border2);background:rgba(255,255,255,.03);cursor:pointer;}
+.pc-act.endorse{background:rgba(79,70,229,.08);color:#818CF8;border-color:rgba(79,70,229,.2);}
+
+/* ════════════════════════════════════════════
+   SCENE 6 — CREATE
+════════════════════════════════════════════ */
+#s6{flex-direction:row;gap:clamp(20px,4vw,56px);}
+.create-phone{width:clamp(265px,32vw,315px);}
+.cr-mode-tabs{display:flex;border-bottom:1px solid var(--app-border);flex-shrink:0;background:var(--app-s1);}
+.cr-mode-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;padding:9px 6px;font-size:9px;font-family:var(--fu);font-weight:700;color:var(--app-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;}
+.cr-mode-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.cr-header{padding:11px 13px 0;flex-shrink:0;background:var(--app-bg);}
+.cr-title{font-size:14px;font-weight:800;font-family:var(--fb);color:var(--app-text);display:flex;align-items:center;gap:5px;margin-bottom:1px;}
+.cr-sub{font-size:9px;color:var(--app-text2);font-family:var(--fm);}
+.cr-share-types{display:flex;gap:5px;padding:9px 13px;flex-shrink:0;background:var(--app-bg);}
+.cr-share-btn{flex:1;padding:6px 4px;border-radius:var(--r-sm);border:1px solid var(--app-border2);background:rgba(255,255,255,.03);font-size:9px;font-weight:700;font-family:var(--fu);color:var(--app-muted);display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;}
+.cr-share-btn.active{background:rgba(79,142,247,.12);border-color:rgba(79,142,247,.3);color:var(--blue);}
+.cr-body{flex:1;overflow-y:auto;scrollbar-width:none;padding:0 13px 13px;background:var(--app-bg);}
+.cr-body::-webkit-scrollbar{display:none;}
+.cr-sect-lbl{font-size:8.5px;font-family:var(--fm);color:var(--app-muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px;margin-top:9px;}
+.ct-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:9px;}
+.ct-btn{background:rgba(255,255,255,.04);border:1px solid var(--app-border2);border-radius:var(--r-xs);padding:7px 3px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-size:9px;color:var(--app-text2);font-family:var(--fu);transition:all .2s;}
+.ct-btn.active,.ct-btn:hover{background:rgba(79,142,247,.09);border-color:rgba(79,142,247,.28);color:var(--blue);}
+.cr-textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--app-border2);border-radius:var(--r-sm);padding:9px 11px;font-size:10px;color:var(--app-text);font-family:var(--fu);min-height:64px;margin-bottom:5px;}
+.cr-char{font-family:var(--fm);font-size:8px;color:var(--app-muted);text-align:right;margin-bottom:7px;}
+.cr-tag-row{display:flex;gap:5px;align-items:center;margin-bottom:5px;}
+.cr-tag-inp{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--app-border2);border-radius:var(--r-xs);padding:5px 9px;font-size:9px;color:var(--app-text);font-family:var(--fu);}
+.cr-tag-add{padding:5px 9px;border-radius:var(--r-xs);border:1px solid rgba(79,142,247,.28);background:rgba(79,142,247,.08);color:var(--blue);font-size:9px;font-family:var(--fm);}
+.cr-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
+.cr-skill-tag{display:inline-flex;align-items:center;gap:3px;font-family:var(--fm);font-size:8px;padding:2px 9px;border-radius:var(--r-pill);background:rgba(35,87,232,.08);border:1px solid rgba(35,87,232,.18);color:var(--accent);}
+.cr-goals{display:flex;gap:5px;margin-bottom:9px;}
+.cr-goal{padding:5px 10px;border-radius:var(--r-pill);border:1px solid var(--app-border2);background:rgba(255,255,255,.03);font-size:9px;color:var(--app-text2);font-family:var(--fu);cursor:pointer;display:flex;align-items:center;gap:3px;}
+.cr-goal.active{background:rgba(79,142,247,.10);border-color:rgba(79,142,247,.28);color:var(--blue);}
+.cr-preview-btn{width:100%;padding:7px;border-radius:var(--r-sm);border:1px solid var(--app-border2);background:rgba(255,255,255,.03);font-size:9px;color:var(--app-text2);font-family:var(--fu);display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:7px;cursor:pointer;}
+.cr-post-btn{width:100%;padding:11px;border-radius:var(--r-sm);border:none;background:linear-gradient(135deg,var(--accent),var(--accent-d));color:#fff;font-size:11px;font-weight:800;font-family:var(--fb);display:flex;align-items:center;justify-content:center;gap:5px;box-shadow:0 4px 16px rgba(35,87,232,.32);cursor:pointer;}
+
+/* ════════════════════════════════════════════
+   SCENE 7 — COMMUNITIES
+════════════════════════════════════════════ */
+.com-row{display:flex;gap:12px;justify-content:center;overflow:visible;}
+.comcard{
+  background:var(--surface);border:1px solid var(--border);border-radius:18px;
+  padding:16px;width:186px;flex-shrink:0;
+  opacity:0;animation:cardIn .5s ease both;
+  box-shadow:var(--sh-md);position:relative;overflow:hidden;
+}
+.comcard::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(35,87,232,0.2),transparent);}
+.combanner{width:100%;height:64px;border-radius:var(--r-sm);margin-bottom:10px;display:flex;align-items:center;justify-content:center;font-size:24px;}
+.comname{font-family:var(--fb);font-size:13px;font-weight:800;color:var(--text);margin-bottom:2px;}
+.commem{font-family:var(--fm);font-size:9px;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:5px;}
+.comdot{width:5px;height:5px;border-radius:50%;}
+.comavs{display:flex;margin-bottom:9px;}
+.coma{width:20px;height:20px;border-radius:50%;border:2px solid var(--surface);margin-left:-5px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;font-family:var(--fb);color:#fff;}
+.coma:first-child{margin-left:0;}
+.jbtn{width:100%;padding:7px;border-radius:var(--r-xs);border:none;font-size:11px;font-weight:700;color:#fff;}
+
+/* ════════════════════════════════════════════
+   SCENE 8 — ROOMS
+════════════════════════════════════════════ */
+.rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:840px;width:92vw;}
+.rcard{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:18px;position:relative;overflow:hidden;
+  opacity:0;animation:cardIn .5s ease both;box-shadow:var(--sh-sm);
+}
+.rcard-accent{position:absolute;top:0;left:0;right:0;height:2px;}
+.rglow{position:absolute;width:70px;height:70px;border-radius:50%;filter:blur(30px);opacity:.15;top:-15px;right:-10px;}
+.rico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;font-size:18px;}
+.rname{font-family:var(--fb);font-size:14px;font-weight:800;color:var(--text);margin-bottom:4px;}
+.rtopic{font-size:11px;color:var(--text2);line-height:1.55;margin-bottom:9px;}
+.rbadge{display:inline-flex;align-items:center;gap:4px;font-family:var(--fm);font-size:9px;font-weight:600;padding:2px 9px;border-radius:var(--r-pill);margin-bottom:9px;}
+.rbadge.live{background:rgba(220,38,38,.08);color:var(--danger);border:1px solid rgba(220,38,38,.18);}
+.rbadge.act{background:rgba(5,150,105,.07);color:var(--accent2);border:1px solid rgba(5,150,105,.18);}
+.ldot{width:5px;height:5px;border-radius:50%;background:currentColor;animation:pulse 1.2s ease-in-out infinite;}
+.rpeople{font-family:var(--fm);font-size:9px;color:var(--muted);display:flex;align-items:center;gap:4px;}
+.rentry{margin-top:8px;width:100%;padding:6px;border-radius:var(--r-xs);border:1px solid rgba(35,87,232,.2);background:rgba(35,87,232,.06);font-size:10px;font-weight:700;color:var(--accent);font-family:var(--fu);}
+
+/* ════════════════════════════════════════════
+   SCENE 9 — GUILD CHAT
+════════════════════════════════════════════ */
+#s9{flex-direction:row;gap:clamp(20px,4vw,60px);}
+.guild-phone{width:clamp(260px,32vw,320px);}
+.guild-hdr{padding:12px 13px;background:var(--app-s1);border-bottom:1px solid var(--app-border);display:flex;align-items:center;gap:9px;flex-shrink:0;}
+.guild-ico{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 10px rgba(79,142,247,.28);}
+.guild-hname{font-size:12px;font-weight:800;font-family:var(--fb);color:var(--app-text);}
+.guild-hsub{font-family:var(--fm);font-size:8px;color:var(--cyan);}
+.guild-hacts{margin-left:auto;display:flex;gap:7px;color:var(--app-text2);}
+.guild-msgs{flex:1;overflow-y:auto;scrollbar-width:none;padding:9px;display:flex;flex-direction:column;gap:5px;background:var(--app-bg);}
+.guild-msgs::-webkit-scrollbar{display:none;}
+.guild-date{text-align:center;font-family:var(--fm);font-size:8px;color:var(--app-muted);margin:3px 0;align-self:center;padding:2px 9px;background:rgba(255,255,255,.04);border-radius:var(--r-pill);}
+.gmsg{display:flex;gap:6px;align-items:flex-end;max-width:90%;}
+.gmsg.mine{align-self:flex-end;flex-direction:row-reverse;}
+.gmsg-av{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--fb);font-size:8px;font-weight:800;color:#fff;}
+.gmsg-body{display:flex;flex-direction:column;gap:2px;}
+.gmsg.mine .gmsg-body{align-items:flex-end;}
+.gmsg-top{display:flex;align-items:baseline;gap:4px;margin-bottom:1px;}
+.gmsg-uname{font-size:9px;font-weight:700;color:var(--app-text2);}
+.gmsg-skill{font-family:var(--fm);font-size:7px;padding:1px 5px;border-radius:var(--r-pill);background:rgba(79,142,247,.10);color:var(--blue);border:1px solid rgba(79,142,247,.18);}
+.gmsg-time{font-family:var(--fm);font-size:7px;color:var(--app-muted);}
+.gbub{padding:7px 10px;font-size:10.5px;line-height:1.55;max-width:210px;}
+.gmsg:not(.mine) .gbub{background:var(--app-s2);border:1px solid var(--app-border2);border-radius:4px var(--r-sm) var(--r-sm) var(--r-sm);color:var(--app-text);}
+.gmsg.mine .gbub{background:linear-gradient(135deg,var(--blue),#2357E8);color:#fff;border-radius:var(--r-sm) 4px var(--r-sm) var(--r-sm);box-shadow:0 3px 10px rgba(79,142,247,.28);}
+.gmsg-ck{font-family:var(--fm);font-size:8px;color:var(--blue);}
+.guild-input{padding:7px 10px 9px;border-top:1px solid var(--app-border);display:flex;gap:5px;align-items:flex-end;flex-shrink:0;background:var(--app-s1);}
+.gi-wrap{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--app-border2);border-radius:var(--r-sm);padding:6px 9px;display:flex;align-items:center;gap:5px;}
+.gi-inp{flex:1;background:none;border:none;font-size:9px;color:var(--app-muted);font-family:var(--fu);}
+.gi-emoji{color:var(--app-muted);font-size:13px;}
+.gi-send{width:30px;height:30px;border-radius:var(--r-xs);border:none;background:linear-gradient(135deg,var(--blue),#2357E8);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 8px rgba(79,142,247,.3);}
+
+/* ════════════════════════════════════════════
+   SCENE 10 — KANBAN
+════════════════════════════════════════════ */
+.kboard{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:min(940px,93vw);}
+.kcol{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:10px;min-height:180px;box-shadow:var(--sh-sm);}
+.kchdr{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+.kcdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.kcname{font-size:11px;font-weight:800;font-family:var(--fb);color:var(--text);flex:1;}
+.kccnt{font-family:var(--fm);font-size:10px;color:var(--muted);background:var(--bg2);border-radius:var(--r-pill);padding:1px 7px;border:1px solid var(--border);}
+.kcard{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px;margin-bottom:7px;cursor:pointer;transition:all .2s;opacity:0;animation:kbIn .4s ease both;}
+.kcard:hover{border-color:rgba(35,87,232,.25);box-shadow:var(--sh-sm);}
+.kcard.dragging{opacity:.5;transform:scale(.97) rotate(1.5deg);border-color:rgba(35,87,232,.4);}
+.kcard.win{border-color:rgba(5,150,105,.3);background:rgba(5,150,105,.04);}
+.kctitle{font-size:11px;font-weight:700;color:var(--text);margin-bottom:5px;line-height:1.4;}
+.kctags{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px;}
+.kcmeta{display:flex;align-items:center;justify-content:space-between;}
+.kcavs{display:flex;}
+.kcav{width:17px;height:17px;border-radius:50%;border:1.5px solid var(--surface);margin-left:-4px;display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:800;font-family:var(--fb);color:#fff;}
+.kcav:first-child{margin-left:0;}
+.kpri{font-family:var(--fm);font-size:8px;padding:2px 7px;border-radius:var(--r-pill);}
+.kpri.h{background:rgba(220,38,38,.08);color:var(--danger);border:1px solid rgba(220,38,38,.18);}
+.kpri.m{background:rgba(217,119,6,.08);color:var(--warning);border:1px solid rgba(217,119,6,.18);}
+.kpri.d{background:rgba(5,150,105,.07);color:var(--accent2);border:1px solid rgba(5,150,105,.18);}
+
+/* ════════════════════════════════════════════
+   SCENE 11 — FEATURES
+════════════════════════════════════════════ */
+.ftrio{display:flex;gap:14px;max-width:900px;width:93vw;}
+.fcard{
+  flex:1;background:var(--surface);border:1px solid var(--border);border-radius:18px;
+  padding:20px;opacity:0;animation:cardIn .55s ease both;box-shadow:var(--sh-md);
+  position:relative;overflow:hidden;
+}
+.fcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--fglow,#2357E8),transparent);opacity:.5;}
+.fico{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;}
+.fname{font-family:var(--fb);font-size:15px;font-weight:800;color:var(--text);margin-bottom:5px;}
+.fdesc{font-size:11px;color:var(--text2);line-height:1.65;margin-bottom:12px;}
+.vwave{display:flex;gap:2px;align-items:center;height:40px;}
+.vb{width:3px;border-radius:3px;animation:voiceW .7s ease-in-out infinite alternate;min-height:4px;}
+.vgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px;border-radius:9px;overflow:hidden;height:56px;}
+.vtile{display:flex;align-items:center;justify-content:center;font-family:var(--fb);font-size:10px;font-weight:800;color:#fff;}
+.sketch{width:100%;height:68px;border-radius:9px;background:var(--bg);border:1px solid var(--border);position:relative;overflow:hidden;}
+
+/* ════════════════════════════════════════════
+   SCENE 12 — FINALE
+════════════════════════════════════════════ */
+.f-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 16px;border-radius:var(--r-pill);
+  background:rgba(35,87,232,0.08);border:1px solid rgba(35,87,232,0.2);
+  font-family:var(--fm);font-size:10px;letter-spacing:.3px;color:var(--accent);
+  margin-bottom:16px;opacity:0;animation:riseIn .5s .05s ease both;
+}
+.f-hl{display:flex;flex-direction:column;align-items:center;text-align:center;gap:0;}
+.f-meet{font-family:var(--fb);font-size:clamp(32px,6.5vw,74px);font-weight:800;color:var(--text);letter-spacing:-.03em;opacity:0;animation:riseIn .6s .15s ease both;}
+.f-people{
+  font-family:var(--fb);font-size:clamp(38px,8vw,90px);font-weight:800;letter-spacing:-.04em;line-height:.95;
+  background:linear-gradient(135deg,var(--accent-d),var(--accent),var(--accent-l),var(--cyan));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(0 2px 18px rgba(35,87,232,.18));
+  opacity:0;animation:riseIn .7s .3s ease both;
+}
+.f-sub{font-size:clamp(13px,1.5vw,16px);color:var(--text2);text-align:center;line-height:1.75;opacity:0;animation:riseIn .6s .45s ease both;max-width:420px;}
+.f-ctas{display:flex;gap:12px;margin-top:26px;opacity:0;animation:riseIn .6s .6s ease both;}
+.fbtn{padding:12px 28px;border-radius:var(--r-pill);font-size:14px;font-weight:700;font-family:var(--fb);border:none;cursor:pointer;transition:all .22s;}
+.fbtn.prim{background:linear-gradient(135deg,var(--accent),var(--accent-d));color:#fff;box-shadow:0 6px 22px rgba(35,87,232,.36);}
+.fbtn.prim:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(35,87,232,.5);}
+.fbtn.sec{background:var(--surface);color:var(--text);border:1.5px solid var(--border);box-shadow:var(--sh-sm);}
+.fbtn.sec:hover{border-color:rgba(35,87,232,.3);}
+.f-url{font-family:var(--fm);font-size:11px;color:var(--muted);margin-top:14px;letter-spacing:.08em;opacity:0;animation:riseIn .5s .75s ease both;}
+
+/* ════════════════════════════════════════════
+   SCENE TEXT HELPERS for light bg
+════════════════════════════════════════════ */
+.scene-copy{max-width:clamp(180px,28vw,310px);}
+.scene-copy .eyebrow{color:var(--accent);}
+.scene-copy .subtext{color:var(--text2);}
+
+</style>
+</head>
+<body>
+
+<!-- ── BACKGROUND ── -->
+<div id="bg-mesh"></div>
+<div id="bg-grid"></div>
+<div id="flash"></div>
+
+<div id="ad">
+
+  <!-- ═════════════════════════════════
+       SCENE 1: LOGO REVEAL
+  ═════════════════════════════════ -->
+  <section class="sc" id="s1" style="overflow:hidden;">
+    <div class="logo-ring"><div class="ring-dot" style="background:var(--accent);box-shadow:0 0 8px rgba(35,87,232,.6)"></div></div>
+    <div class="logo-ring"><div class="ring-dot" style="background:var(--purple);box-shadow:0 0 7px rgba(79,70,229,.5)"></div></div>
+    <div class="logo-ring"><div class="ring-dot" style="background:var(--cyan);box-shadow:0 0 6px rgba(34,211,238,.5)"></div></div>
+    <div class="logo-glow"></div>
+    <div style="position:relative;z-index:2;text-align:center;">
+      <div class="logo-text">GOLEX</div>
+      <div class="logo-tagline">Skill · Connect · Build · Grow</div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 2: PEOPLE DIRECTORY
+  ═════════════════════════════════ -->
+  <section class="sc" id="s2">
+    <div class="eyebrow">People Directory</div>
+    <div class="headline" style="text-align:center;margin-bottom:20px">Find Your <span class="g">Crew</span></div>
+    <div class="dir-grid" id="dir-grid"></div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 3: DM CHAT
+  ═════════════════════════════════ -->
+  <section class="sc" id="s3">
+    <div class="scene-copy">
+      <div class="eyebrow">Direct Messages</div>
+      <div class="headline" style="font-size:clamp(22px,4vw,44px);">Real talk.<br>Real <span class="g">skills.</span></div>
+      <p class="subtext">DM anyone in the network. Share files, voice notes — no gatekeeping.</p>
+    </div>
+    <div class="phone chat-phone phone-anim-a">
+      <div class="cphdr">
+        <div class="chav" style="background:linear-gradient(135deg,#4F8EF7,#8B5CF6)">AK<div class="ondot"></div></div>
+        <div><div class="chname">Aryan K.</div><div class="chskill">Full Stack · ⭐ 4.9</div></div>
+        <div class="chhdr-acts">
+          <div class="chhdr-act">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 14 19.79 19.79 0 0 1 1.56 5.3 2 2 0 0 1 3.53 3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.9a16 16 0 0 0 6.1 6.1l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
+          </div>
+          <div class="chhdr-act">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="chat-msgs" id="chat-msgs"></div>
+      <div class="cfinput">
+        <div class="ci-btn">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </div>
+        <div class="ci-wrap"><div class="cinp">Type a message…</div></div>
+        <div class="ci-btn">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        </div>
+        <div class="csend">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 4: VIDEO CALL
+  ═════════════════════════════════ -->
+  <section class="sc" id="s4">
+    <div style="text-align:center;margin-bottom:14px;">
+      <div class="eyebrow">In-App Calls</div>
+      <div class="headline">Work closer. <span class="g">Together.</span></div>
+    </div>
+    <div class="call-box">
+      <div class="callgrid">
+        <div class="ctile" style="background:linear-gradient(135deg,#0c1a36,#09112a)">
+          <div class="ctbg"><div class="ctav" style="background:linear-gradient(135deg,#4F8EF7,#2357E8)">AK</div></div>
+          <div class="cnbadge"><div class="cwave"><div class="cwb" style="height:8px;animation-delay:0s"></div><div class="cwb" style="height:16px;animation-delay:.1s"></div><div class="cwb" style="height:6px;animation-delay:.2s"></div></div>Aryan K.</div>
+        </div>
+        <div class="ctile" style="background:linear-gradient(135deg,#11082c,#0c0420)">
+          <div class="ctbg"><div class="ctav" style="background:linear-gradient(135deg,#8B5CF6,#EC4899)">SM</div></div>
+          <div class="cnbadge">
+            <svg width="10" height="10" fill="none" stroke="#10B981" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg> Shreya M.
+          </div>
+        </div>
+        <div class="ctile" style="background:linear-gradient(135deg,#041c16,#041510)">
+          <div class="ctbg"><div class="ctav" style="background:linear-gradient(135deg,#10B981,#22D3EE)">RV</div></div>
+          <div class="cnbadge"><div class="cwave"><div class="cwb" style="height:14px;background:var(--cyan);animation-delay:.05s"></div><div class="cwb" style="height:6px;background:var(--cyan);animation-delay:.15s"></div><div class="cwb" style="height:18px;background:var(--cyan);animation-delay:.25s"></div></div>Rajan V.</div>
+        </div>
+        <div class="ctile" style="background:linear-gradient(135deg,#1c0d08,#140a05)">
+          <div class="ctbg"><div class="ctav" style="background:linear-gradient(135deg,#F59E0B,#EF4444)">NP</div></div>
+          <div class="cnbadge">
+            <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/></svg> Nisha P.
+          </div>
+        </div>
+      </div>
+      <div class="callctrl">
+        <button class="cbtn mute"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
+        <button class="cbtn vid"><svg width="16" height="16" fill="none" stroke="#4F8EF7" stroke-width="2" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+        <button class="cbtn scr"><svg width="16" height="16" fill="none" stroke="#8B5CF6" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+        <button class="cbtn react"><svg width="16" height="16" fill="none" stroke="#F59E0B" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+        <button class="cbtn cht"><svg width="16" height="16" fill="none" stroke="#22D3EE" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
+        <button class="cbtn hng"><svg width="17" height="17" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.17-2.89m-2.66-3.43A19.79 19.79 0 0 1 2.56 5.3 2 2 0 0 1 4.53 3h3a2 2 0 0 1 2 1.72 12.05 12.05 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11l-1.27 1.27"/><line x1="23" y1="1" x2="1" y2="23"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 5: EXPLORE
+  ═════════════════════════════════ -->
+  <section class="sc" id="s5">
+    <div class="scene-copy">
+      <div class="eyebrow">Explore Feed</div>
+      <div class="headline" style="font-size:clamp(22px,4vw,44px);">Discover.<br>Learn. <span class="e">Grow.</span></div>
+      <p class="subtext">Stories, posts, leaderboards & people — all in one feed built for builders.</p>
+    </div>
+    <div class="phone explore-phone phone-anim-a">
+      <div class="stories-bar" id="stories-bar"></div>
+      <div class="ex-top">
+        <div class="ex-search-row">
+          <div class="ex-search">Search posts, tags, people…</div>
+          <div class="ex-sort">⚡ Smart</div>
+          <div class="ex-saved"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg></div>
+          <div class="ex-filter-btn">All <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+        </div>
+        <div class="ex-tabs">
+          <button class="ex-tab active"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Posts</button>
+          <button class="ex-tab"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> People</button>
+          <button class="ex-tab"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg> Top</button>
+        </div>
+      </div>
+      <div class="ex-feed" id="ex-feed"></div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 6: CREATE
+  ═════════════════════════════════ -->
+  <section class="sc" id="s6">
+    <div class="scene-copy">
+      <div class="eyebrow">Content Hub</div>
+      <div class="headline" style="font-size:clamp(22px,4vw,44px);">Create.<br><span class="p">Inspire.</span></div>
+      <p class="subtext">Text, image, audio, file, link — share anything with 50K+ builders. Live for 24h.</p>
+    </div>
+    <div class="phone create-phone phone-anim-b">
+      <div class="cr-mode-tabs">
+        <button class="cr-mode-tab active"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Golex Post</button>
+        <button class="cr-mode-tab"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Community</button>
+      </div>
+      <div class="cr-header"><div class="cr-title"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Create</div><div class="cr-sub">Share knowledge, skills, and ideas</div></div>
+      <div class="cr-share-types">
+        <button class="cr-share-btn active"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Post</button>
+        <button class="cr-share-btn"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg> Story</button>
+      </div>
+      <div class="cr-body">
+        <div class="cr-sect-lbl">Choose content type</div>
+        <div class="ct-grid">
+          <div class="ct-btn active"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Text</div>
+          <div class="ct-btn"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Image</div>
+          <div class="ct-btn"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg> Audio</div>
+          <div class="ct-btn"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg> File</div>
+          <div class="ct-btn"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Link</div>
+          <div class="ct-btn"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg> Voice+Img</div>
+        </div>
+        <div class="cr-sect-lbl">What's on your mind?</div>
+        <div class="cr-textarea" style="color:var(--app-muted);"><span id="create-text"></span><span style="display:inline-block;width:2px;height:11px;background:var(--blue);animation:blink 1s step-end infinite;vertical-align:middle;margin-left:1px;"></span></div>
+        <div class="cr-char"><span id="create-char">0</span> / 500</div>
+        <div class="cr-sect-lbl">Skill tags <span style="color:var(--danger-l);font-size:7px;">*required</span></div>
+        <div class="cr-tag-row"><div class="cr-tag-inp" style="color:var(--app-muted);">e.g. React, Figma…</div><div class="cr-tag-add">+ Add</div></div>
+        <div class="cr-tags"><div class="cr-skill-tag">React</div><div class="cr-skill-tag">Node.js</div></div>
+        <div class="cr-sect-lbl">Goal for this post</div>
+        <div class="cr-goals">
+          <div class="cr-goal">📖 Learn</div>
+          <div class="cr-goal active">💼 Hire</div>
+          <div class="cr-goal">🤝 Collab</div>
+        </div>
+        <div class="cr-preview-btn"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview Post</div>
+        <div class="cr-post-btn"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Post Now — Live for 24h</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 7: COMMUNITIES
+  ═════════════════════════════════ -->
+  <section class="sc" id="s7">
+    <div class="eyebrow">Communities</div>
+    <div class="headline" style="text-align:center;margin-bottom:20px">Find Your <span class="g">Tribe</span></div>
+    <div class="com-row" id="com-row"></div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 8: ROOMS
+  ═════════════════════════════════ -->
+  <section class="sc" id="s8">
+    <div class="eyebrow" style="text-align:center;">Rooms</div>
+    <div class="headline" style="text-align:center;margin-bottom:20px">Your Space. <span class="p">Your Vibe.</span></div>
+    <div class="rgrid" id="rgrid"></div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 9: GUILD CHAT
+  ═════════════════════════════════ -->
+  <section class="sc" id="s9">
+    <div class="scene-copy">
+      <div class="eyebrow">Guilds</div>
+      <div class="headline" style="font-size:clamp(22px,4vw,44px);">Stronger <span class="g">Together</span></div>
+      <p class="subtext">Join a guild of elite builders. React, reply, collaborate in real-time group chat.</p>
+    </div>
+    <div class="phone guild-phone phone-anim-a">
+      <div class="guild-hdr">
+        <div class="guild-ico">⚔️</div>
+        <div><div class="guild-hname">Elite Builders Guild</div><div class="guild-hsub">42 members · 12 online</div></div>
+        <div class="guild-hacts">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 14 19.79 19.79 0 0 1 1.56 5.3 2 2 0 0 1 3.53 3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.9a16 16 0 0 0 6.1 6.1l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17.92z"/></svg>
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+      </div>
+      <div class="guild-msgs" id="guild-msgs"><div class="guild-date">Today</div></div>
+      <div class="guild-input">
+        <div class="gi-wrap"><div class="gi-inp">Message the guild…</div><div class="gi-emoji">😊</div></div>
+        <div class="gi-send"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 10: KANBAN
+  ═════════════════════════════════ -->
+  <section class="sc" id="s10">
+    <div class="eyebrow" style="text-align:center;">Project Management</div>
+    <div class="headline" style="text-align:center;margin-bottom:14px">Build. Track. <span class="g">Ship.</span></div>
+    <div class="kboard" id="kboard"></div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 11: FEATURES
+  ═════════════════════════════════ -->
+  <section class="sc" id="s11">
+    <div class="eyebrow" style="text-align:center;">Platform Features</div>
+    <div class="headline" style="text-align:center;margin-bottom:18px">Everything You <span class="g">Need</span></div>
+    <div class="ftrio">
+      <div class="fcard" style="--fglow:var(--accent);animation-delay:0s">
+        <div class="fico" style="background:rgba(35,87,232,.09);"><svg width="17" height="17" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div>
+        <div class="fname">Voice Rooms</div>
+        <div class="fdesc">Crystal-clear audio for AMAs, study halls, deep work, and live collab sessions.</div>
+        <div class="vwave" id="vwave"></div>
+      </div>
+      <div class="fcard" style="--fglow:var(--purple);animation-delay:.12s">
+        <div class="fico" style="background:rgba(139,92,246,.09);"><svg width="17" height="17" fill="none" stroke="var(--purple)" stroke-width="2" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
+        <div class="fname">Video Calls</div>
+        <div class="fdesc">HD video with screen sharing, emoji reactions, and built-in spatial audio.</div>
+        <div class="vgrid">
+          <div class="vtile" style="background:linear-gradient(135deg,#0c1a36,#09112a)">AK</div>
+          <div class="vtile" style="background:linear-gradient(135deg,#11082c,#0c0420)">SM</div>
+          <div class="vtile" style="background:linear-gradient(135deg,#041c16,#041510)">RV</div>
+          <div class="vtile" style="background:linear-gradient(135deg,#1c0d08,#140a05)">NP</div>
+        </div>
+      </div>
+      <div class="fcard" style="--fglow:var(--cyan);animation-delay:.24s">
+        <div class="fico" style="background:rgba(6,182,212,.09);"><svg width="17" height="17" fill="none" stroke="#0891B2" stroke-width="2" viewBox="0 0 24 24"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg></div>
+        <div class="fname">Sketch Board</div>
+        <div class="fdesc">Real-time collaborative whiteboard — draw, shapes, sticky notes, live edits.</div>
+        <div class="sketch">
+          <svg style="width:100%;height:100%;position:absolute;top:0;left:0" viewBox="0 0 280 68" preserveAspectRatio="none">
+            <path d="M15,52 Q70,8 140,32 Q210,56 265,16" fill="none" stroke="#2357E8" stroke-width="2" stroke-linecap="round" stroke-dasharray="600" stroke-dashoffset="600" style="animation:drawSVG 2.5s ease .6s both infinite;opacity:.7"/>
+            <path d="M15,32 Q90,58 155,22 Q215,0 265,46" fill="none" stroke="#22D3EE" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="600" stroke-dashoffset="600" style="animation:drawSVG 2.5s ease 1.1s both infinite;opacity:.5"/>
+            <circle cx="55" cy="44" r="8" fill="none" stroke="#8B5CF6" stroke-width="1.5" stroke-dasharray="63" stroke-dashoffset="63" style="animation:drawSVG 1.2s ease 1.8s both infinite;opacity:.5"/>
+            <rect x="185" y="18" width="40" height="22" rx="5" fill="none" stroke="#059669" stroke-width="1.5" stroke-dasharray="140" stroke-dashoffset="140" style="animation:drawSVG 1.2s ease 2.1s both infinite;opacity:.5"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════
+       SCENE 12: FINALE CTA
+  ═════════════════════════════════ -->
+  <section class="sc" id="s12">
+    <div class="f-badge">
+      <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      The Skill-Based Network
+    </div>
+    <div class="f-hl">
+      <span class="f-meet">Meet Your</span>
+      <span class="f-people">People.</span>
+    </div>
+    <p class="f-sub">Built for builders, creators, and collaborators worldwide.<br>Skills first. Always.</p>
+    <div class="f-ctas">
+      <button class="fbtn prim">Join Golex →</button>
+      <button class="fbtn sec">Explore the App</button>
+    </div>
+    <div class="f-url">snaplyn.xyz / golex</div>
+  </section>
+
+</div><!-- /ad -->
+
+<div id="pgbar" style="width:0%"></div>
+<div id="dots"></div>
+
+<script>
+/* ════════════════════════════════════════
+   DATA
+════════════════════════════════════════ */
+const USERS=[
+  {i:'AK',n:'Aryan K.',role:'Full Stack Dev',s:['React','Node.js'],sc:['tb','tg'],c:'linear-gradient(135deg,#4F8EF7,#2357E8)',rep:'2.8K',endorse:38},
+  {i:'SM',n:'Shreya M.',role:'UI/UX Designer',s:['Figma','Design'],sc:['tp','tb'],c:'linear-gradient(135deg,#8B5CF6,#EC4899)',rep:'3.1K',endorse:52},
+  {i:'RV',n:'Rajan V.',role:'ML Engineer',s:['Python','ML'],sc:['tg','tc'],c:'linear-gradient(135deg,#10B981,#22D3EE)',rep:'4.2K',endorse:71},
+  {i:'NP',n:'Nisha P.',role:'Data Scientist',s:['Data','SQL'],sc:['tc','tb'],c:'linear-gradient(135deg,#F59E0B,#EF4444)',rep:'1.9K',endorse:29},
+  {i:'KS',n:'Kiran S.',role:'iOS Developer',s:['Swift','iOS'],sc:['tc','tp'],c:'linear-gradient(135deg,#22D3EE,#4F8EF7)',rep:'2.5K',endorse:44},
+  {i:'DJ',n:'Dev J.',role:'DevOps Eng.',s:['DevOps','K8s'],sc:['tb','tg'],c:'linear-gradient(135deg,#EF4444,#F59E0B)',rep:'1.7K',endorse:21},
+  {i:'PP',n:'Priya P.',role:'Brand & 3D',s:['Brand','3D'],sc:['tp','tc'],c:'linear-gradient(135deg,#EC4899,#8B5CF6)',rep:'2.2K',endorse:36},
+  {i:'VT',n:'Vikas T.',role:'Backend Eng.',s:['Go','gRPC'],sc:['tg','tc'],c:'linear-gradient(135deg,#06B6D4,#10B981)',rep:'1.5K',endorse:18},
+];
+const COMS=[
+  {e:'⚡',n:'WebDev Elite',m:'12.4K',g:'linear-gradient(135deg,#4F8EF7,#2357E8)',a:['AK','SM','RV'],dot:'#4F8EF7'},
+  {e:'🎨',n:'Design Guild',m:'8.2K',g:'linear-gradient(135deg,#8B5CF6,#EC4899)',a:['PP','SM','KS'],dot:'#8B5CF6'},
+  {e:'🤖',n:'AI Lab',m:'15.1K',g:'linear-gradient(135deg,#22D3EE,#10B981)',a:['RV','NP','VT'],dot:'#22D3EE'},
+  {e:'🚀',n:'Founders Hub',m:'6.7K',g:'linear-gradient(135deg,#F59E0B,#EF4444)',a:['AK','DJ','PP'],dot:'#F59E0B'},
+  {e:'📱',n:'Mobile Devs',m:'9.8K',g:'linear-gradient(135deg,#10B981,#06B6D4)',a:['KS','SM','VT'],dot:'#10B981'},
+];
+const ROOMS=[
+  {e:'🧠',n:'Deep Work',t:'Silent focus for makers & builders.',b:'act',bl:'12 inside',glow:'#2357E8',grd:'linear-gradient(135deg,#2357E8,#4F8EF7)',p:'12'},
+  {e:'🔥',n:'Ship It Daily',t:'Daily wins & accountability room.',b:'live',bl:'LIVE',glow:'#DC2626',grd:'linear-gradient(135deg,#DC2626,#F59E0B)',p:'34'},
+  {e:'🎯',n:'Code Review',t:'Peer review with live feedback.',b:'act',bl:'8 inside',glow:'#0891B2',grd:'linear-gradient(135deg,#0891B2,#4F8EF7)',p:'8'},
+  {e:'🌍',n:'Global Collab',t:'Builders across timezones.',b:'live',bl:'LIVE',glow:'#059669',grd:'linear-gradient(135deg,#059669,#22D3EE)',p:'56'},
+  {e:'💡',n:'Idea Lab',t:'Brainstorm, validate, and build.',b:'act',bl:'5 inside',glow:'#7C3AED',grd:'linear-gradient(135deg,#7C3AED,#EC4899)',p:'5'},
+  {e:'🎸',n:'Creative Den',t:'Music, art, and exploration.',b:'act',bl:'7 inside',glow:'#D97706',grd:'linear-gradient(135deg,#D97706,#DC2626)',p:'7'},
+];
+const CHATS=[
+  {s:'them',t:"Hey! Saw your React project — incredible real-time work 🔥",tm:"2:41 PM"},
+  {s:'me',t:"Thanks! WebSockets + Redis. Wanna collab on something?",tm:"2:42 PM"},
+  {s:'them',t:"100%! Building a design system — could use a dev eye 👀",tm:"2:42 PM"},
+  {s:'me',t:"Let's jump on a call and dive in 🚀",tm:"2:43 PM"},
+  {s:'them',t:"Added you to the project board. Welcome ⚔️",tm:"2:43 PM"},
+];
+const GUILD_MSGS=[
+  {u:'AK',c:'linear-gradient(135deg,#4F8EF7,#2357E8)',skill:'Full Stack',t:"Just shipped the new auth system 🚀 PRs welcome!",tm:"2:38 PM",mine:false},
+  {u:'SM',c:'linear-gradient(135deg,#8B5CF6,#EC4899)',skill:'Design',t:"Love the new login flow! Left a comment on Figma 👏",tm:"2:39 PM",mine:false},
+  {u:'RV',c:'linear-gradient(135deg,#10B981,#22D3EE)',skill:'ML',t:"Also merged the rate-limiter. Guild call at 2?",tm:"2:40 PM",mine:false},
+  {u:'ME',c:'linear-gradient(135deg,#F59E0B,#EF4444)',skill:'DevOps',t:"2 works! Setting up staging env now 💪",tm:"2:41 PM",mine:true},
+];
+const POSTS=[
+  {u:'AK',c:'linear-gradient(135deg,#4F8EF7,#2357E8)',n:'Aryan K.',role:'Full Stack',ago:'2m',badge:'🔥 Trending',txt:'Shipped a real-time collab editor using WebSockets + React. Open to feedback!',tags:['React','WebSockets'],upv:142,cmt:28,share:14,endorse:11},
+  {u:'SM',c:'linear-gradient(135deg,#8B5CF6,#EC4899)',n:'Shreya M.',role:'UI Design',ago:'5m',badge:'Learn',txt:'New design system: 60+ components, dark/light, fully tokenized. Link in bio ↗',tags:['Figma','Design'],upv:98,cmt:19,share:22,endorse:8},
+  {u:'RV',c:'linear-gradient(135deg,#10B981,#22D3EE)',n:'Rajan V.',role:'ML Eng.',ago:'9m',badge:'Collab',txt:'RAG pipeline hitting 94% retrieval accuracy. Looking for a frontend co-founder 👀',tags:['Python','ML'],upv:211,cmt:44,share:31,endorse:19},
+];
+const STORIES=[
+  {u:'AK',c:'linear-gradient(135deg,#4F8EF7,#8B5CF6)',lbl:'Aryan'},
+  {u:'SM',c:'linear-gradient(135deg,#8B5CF6,#EC4899)',lbl:'Shreya'},
+  {u:'RV',c:'linear-gradient(135deg,#10B981,#22D3EE)',lbl:'Rajan'},
+  {u:'NP',c:'linear-gradient(135deg,#F59E0B,#EF4444)',lbl:'Nisha'},
+  {u:'KS',c:'linear-gradient(135deg,#22D3EE,#4F8EF7)',lbl:'Kiran'},
+];
+
+/* ════════════════════════════════════════
+   BUILDERS
+════════════════════════════════════════ */
+function buildDir(){
+  document.getElementById('dir-grid').innerHTML=USERS.map((u,i)=>`
+    <div class="dcard" style="animation-delay:${i*.07}s">
+      <div class="dav" style="background:${u.c}">${u.i}<div class="ondot"></div></div>
+      <div class="dname">${u.n}</div><div class="drole">${u.role}</div>
+      <div class="dtags">${u.s.map((s,si)=>`<span class="dtag ${u.sc[si]}">${s}</span>`).join('')}</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:1px;">
+        <span class="drep-val">⭐ ${u.rep} rep</span>
+        <span class="dendorse">· ${u.endorse} endorsed</span>
+      </div>
+      <button class="dmsg-btn">Message</button>
+    </div>`).join('');
+}
+
+function buildStories(){
+  let h=`<div class="story-wrap"><div class="story-ring add"><div class="story-av" style="background:rgba(255,255,255,.06);color:var(--app-muted);font-size:15px;">+</div></div><div class="story-lbl">Your Story</div></div>`;
+  h+=STORIES.map((s,i)=>`<div class="story-wrap" style="animation-delay:${(i+1)*.08}s"><div class="story-ring active"><div class="story-av" style="background:${s.c}">${s.u}</div></div><div class="story-lbl">${s.lbl}</div></div>`).join('');
+  document.getElementById('stories-bar').innerHTML=h;
+}
+
+function buildFeed(){
+  const tc={React:'tb',WebSockets:'tc',Figma:'tp','Design':'tp',Python:'tg',ML:'tb'};
+  document.getElementById('ex-feed').innerHTML=POSTS.map((p,i)=>`
+    <div class="post-card">
+      <div class="pc-header">
+        <div class="pc-av" style="background:${p.c}">${p.u}</div>
+        <div style="flex:1"><div class="pc-name">${p.n}</div><div class="pc-sub">${p.role} · ${p.ago} ago</div></div>
+        <div class="pc-badge">${p.badge}</div>
+      </div>
+      <div class="pc-body">${p.txt}</div>
+      <div class="pc-tag-row">${p.tags.map(t=>`<span class="pc-tag ${tc[t]||'tb'}">${t}</span>`).join('')}</div>
+      <div class="pc-actions">
+        <div class="pc-act">▲ ${p.upv}</div>
+        <div class="pc-act">💬 ${p.cmt}</div>
+        <div class="pc-act">↗ ${p.share}</div>
+        <div class="pc-act endorse">⭐ Endorse · ${p.endorse}</div>
+      </div>
+    </div>`).join('');
+}
+
+function buildComs(){
+  document.getElementById('com-row').innerHTML=COMS.map((c,i)=>`
+    <div class="comcard" style="animation-delay:${i*.09}s">
+      <div class="combanner" style="background:${c.g}">${c.e}</div>
+      <div class="comname">${c.n}</div>
+      <div class="commem"><span class="comdot" style="background:${c.dot};box-shadow:0 0 5px ${c.dot}60"></span>${c.m} members</div>
+      <div class="comavs">${c.a.map(av=>`<div class="coma" style="background:${USERS.find(u=>u.i===av)?.c||'#2357E8'}">${av}</div>`).join('')}<div class="coma" style="background:var(--bg2);color:var(--muted);font-size:6px">+${Math.floor(Math.random()*80+20)}</div></div>
+      <button class="jbtn" style="background:${c.g}">Join Community</button>
+    </div>`).join('');
+}
+
+function buildRooms(){
+  document.getElementById('rgrid').innerHTML=ROOMS.map((r,i)=>`
+    <div class="rcard" style="animation-delay:${i*.07}s">
+      <div class="rcard-accent" style="background:${r.grd}"></div>
+      <div class="rglow" style="background:${r.glow}"></div>
+      <div class="rico" style="background:${r.glow}14">${r.e}</div>
+      <div class="rname">${r.n}</div><div class="rtopic">${r.t}</div>
+      <div class="rbadge ${r.b}"><span class="ldot"></span>${r.bl}</div>
+      <div class="rpeople">👥 ${r.p} people inside</div>
+      <button class="rentry">Enter Room →</button>
+    </div>`).join('');
+}
+
+function buildVoiceWave(){
+  const h=[6,12,22,32,40,44,40,32,22,12,8,5,10,18,28,38,42,38,28,18,10,6];
+  document.getElementById('vwave').innerHTML=h.map((ht,i)=>
+    `<div class="vb" style="height:${ht}px;background:var(--accent);opacity:${0.5+i/h.length*0.5};animation-delay:${i*.045}s"></div>`).join('');
+}
+
+function buildKanban(){
+  const COLS=[
+    {n:'Backlog',c:'#94A3B8',ct:3,cards:[
+      {t:'User onboarding flow',tags:[{l:'UX',c:'tp'},{l:'P2',c:'ta'}],avs:['SM','PP'],pc:'m'},
+      {t:'API rate limiting',tags:[{l:'Backend',c:'tb'}],avs:['AK'],pc:'m'},
+    ]},
+    {n:'In Progress',c:'#2357E8',ct:2,cards:[
+      {t:'Real-time notifications',tags:[{l:'Feature',c:'tb'},{l:'P1',c:'ta'}],avs:['AK','RV'],pc:'h',id:'dcard'},
+      {t:'Profile redesign',tags:[{l:'Design',c:'tp'}],avs:['SM'],pc:'m'},
+    ]},
+    {n:'Review',c:'#D97706',ct:2,cards:[
+      {t:'Kanban integration',tags:[{l:'PM',c:'tg'}],avs:['VT','DJ'],pc:'h'},
+    ]},
+    {n:'✅ Done',c:'#059669',ct:2,cards:[
+      {t:'Auth system shipped',tags:[{l:'Auth',c:'tg'}],avs:['AK','KS'],pc:'d'},
+    ]},
+  ];
+  document.getElementById('kboard').innerHTML=COLS.map((col,ci)=>`
+    <div class="kcol" id="kcol${ci}">
+      <div class="kchdr">
+        <div class="kcdot" style="background:${col.c};box-shadow:0 0 6px ${col.c}66"></div>
+        <div class="kcname">${col.n}</div>
+        <div class="kccnt">${col.ct}</div>
+      </div>
+      ${col.cards.map((card,ci2)=>`
+        <div class="kcard" id="${card.id||''}" style="animation-delay:${(ci*2+ci2)*.06}s">
+          <div class="kctitle">${card.t}</div>
+          <div class="kctags">${card.tags.map(tag=>`<span class="dtag ${tag.c||'tb'}">${tag.l}</span>`).join('')}</div>
+          <div class="kcmeta">
+            <div class="kcavs">${card.avs.map(av=>`<div class="kcav" style="background:${USERS.find(u=>u.i===av)?.c||'#2357E8'}">${av}</div>`).join('')}</div>
+            <span class="kpri ${card.pc}">${card.pc==='h'?'High':card.pc==='d'?'Done':'Med'}</span>
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+/* ════════════════════════════════════════
+   ANIMATIONS
+════════════════════════════════════════ */
+let chatIdx=0;
+function showChat(){
+  if(chatIdx>=CHATS.length)return;
+  const box=document.getElementById('chat-msgs');if(!box)return;
+  const m=CHATS[chatIdx++];
+  const el=document.createElement('div');
+  el.className=`msg ${m.s}`;
+  el.innerHTML=`<div class="mbub">${m.t}</div><div class="mtime">${m.tm}</div>`;
+  box.appendChild(el); box.scrollTop=box.scrollHeight;
+  if(chatIdx<CHATS.length) setTimeout(showChat,950);
+}
+
+let guildIdx=0;
+function showGuild(){
+  if(guildIdx>=GUILD_MSGS.length)return;
+  const box=document.getElementById('guild-msgs');if(!box)return;
+  const m=GUILD_MSGS[guildIdx++];
+  const el=document.createElement('div');
+  el.className=`gmsg${m.mine?' mine':''}`;
+  const av=`<div class="gmsg-av" style="background:${m.c}">${m.u}</div>`;
+  const body=`<div class="gmsg-body">${!m.mine?`<div class="gmsg-top"><span class="gmsg-uname">${m.u}</span><span class="gmsg-skill">${m.skill}</span><span class="gmsg-time">${m.tm}</span></div>`:''}
+    <div class="gbub">${m.t}</div>
+    ${m.mine?`<div style="display:flex;align-items:center;gap:3px;"><span class="gmsg-time">${m.tm}</span><span class="gmsg-ck">✓✓</span></div>`:''}</div>`;
+  el.innerHTML=m.mine? body+av : av+body;
+  box.appendChild(el); box.scrollTop=box.scrollHeight;
+  if(guildIdx<GUILD_MSGS.length) setTimeout(showGuild,900);
+}
+
+const CTEXTS=["Just shipped a design system — 60+ components…","Looking for a co-founder with backend exp 👀","Built a neural net that generates UI layouts 🤖"];
+let cidx=0,cchar=0;
+function typeC(){
+  const el=document.getElementById('create-text');if(!el)return;
+  const txt=CTEXTS[cidx%CTEXTS.length];
+  if(cchar<=txt.length){
+    el.textContent=txt.slice(0,cchar++);
+    const cc=document.getElementById('create-char');if(cc)cc.textContent=cchar;
+    setTimeout(typeC,46);
+  } else{setTimeout(()=>{cidx++;cchar=0;typeC();},1600);}
+}
+
+let kanbanDone=false;
+function doKanban(){
+  if(kanbanDone)return;kanbanDone=true;
+  setTimeout(()=>{
+    const card=document.getElementById('dcard');
+    const dest=document.getElementById('kcol3');
+    if(!card||!dest)return;
+    card.classList.add('dragging');
+    setTimeout(()=>{
+      card.classList.remove('dragging');card.classList.add('win');
+      dest.appendChild(card);
+      const rect=card.getBoundingClientRect();
+      const colors=['#2357E8','#22D3EE','#8B5CF6','#059669','#D97706','#EC4899'];
+      for(let i=0;i<24;i++){
+        const c=document.createElement('div');
+        c.className='confetti-piece';
+        c.style.cssText=`left:${rect.left+Math.random()*rect.width}px;top:${rect.top}px;background:${colors[i%colors.length]};transform:rotate(${Math.random()*360}deg);animation-delay:${Math.random()*.4}s;border-radius:${Math.random()>.5?'50%':'2px'};`;
+        document.body.appendChild(c);setTimeout(()=>c.remove(),1600);
+      }
+    },900);
+  },1400);
+}
+
+/* ════════════════════════════════════════
+   SCENE ENGINE
+════════════════════════════════════════ */
+const SCENES=[
+  {id:'s1',dur:4000},{id:'s2',dur:4200},{id:'s3',dur:5200},
+  {id:'s4',dur:4200},{id:'s5',dur:5500},{id:'s6',dur:5000},
+  {id:'s7',dur:4000},{id:'s8',dur:4500},{id:'s9',dur:5500},
+  {id:'s10',dur:5000},{id:'s11',dur:4200},{id:'s12',dur:9000},
+];
+let cur=0,scT=Date.now();
+
+const dotsEl=document.getElementById('dots');
+SCENES.forEach((_,i)=>{const d=document.createElement('div');d.className='dot';dotsEl.appendChild(d);});
+const setDots=i=>document.querySelectorAll('.dot').forEach((d,j)=>d.classList.toggle('on',j===i));
+
+function flashCut(){
+  const f=document.getElementById('flash');
+  f.style.transition='none';f.style.opacity='.35';
+  setTimeout(()=>{f.style.transition='opacity .4s';f.style.opacity='0';},50);
+}
+
+function activateScene(idx){
+  flashCut();
+  document.querySelectorAll('.sc').forEach(s=>s.classList.remove('active'));
+  const el=document.getElementById(SCENES[idx].id);
+  if(el)el.classList.add('active');
+  setDots(idx);
+  if(idx===2){chatIdx=0;const b=document.getElementById('chat-msgs');if(b)b.innerHTML='';setTimeout(showChat,700);}
+  if(idx===5){cidx=0;cchar=0;setTimeout(typeC,600);}
+  if(idx===8){guildIdx=0;const b=document.getElementById('guild-msgs');if(b){b.innerHTML='<div class="guild-date">Today</div>';}setTimeout(showGuild,600);}
+  if(idx===9){kanbanDone=false;buildKanban();setTimeout(doKanban,700);}
+}
+
+function tick(){
+  const el=Date.now()-scT;
+  const pct=Math.min(el/SCENES[cur].dur*100,100);
+  document.getElementById('pgbar').style.width=pct+'%';
+  if(el>=SCENES[cur].dur){cur=(cur+1)%SCENES.length;scT=Date.now();activateScene(cur);}
+  requestAnimationFrame(tick);
+}
+
+document.getElementById('ad').addEventListener('click',()=>{cur=(cur+1)%SCENES.length;scT=Date.now();activateScene(cur);});
+
+window.addEventListener('DOMContentLoaded',()=>{
+  const st=document.createElement('style');
+  st.textContent=`@keyframes drawSVG{0%{stroke-dashoffset:600;opacity:0}15%{opacity:1}80%{opacity:.9}100%{stroke-dashoffset:0;opacity:0}}@keyframes voiceW{from{height:4px}to{height:44px}}@keyframes waveBar{from{height:3px}to{height:22px}}`;
+  document.head.appendChild(st);
+  buildDir();buildStories();buildFeed();buildComs();buildRooms();buildVoiceWave();buildKanban();
+  activateScene(0);tick();
+});
+</script>
+</body>
+</html>
