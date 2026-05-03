@@ -35,4 +35,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-video
-          path: video.mp4   # or video.webm
+          path: video.webm   # or video.webm
