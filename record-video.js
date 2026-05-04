@@ -18,12 +18,16 @@ const { chromium } = require('playwright');
       timeout: 30000,
     });
 
-    await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
+    // Wait for a known present element (the phone screen) to confirm the page is ready
+    await page.waitForSelector('#screen-inner', { state: 'visible', timeout: 15000 });
 
     // Optional: take a debug screenshot
     await page.screenshot({ path: 'page-loaded.png' });
 
-    // Record the full animation loop (~80 seconds)
+    // Give the animation a moment to initialise (the script auto‑starts after 0.5s)
+    await page.waitForTimeout(1000);
+
+    // Record the full animation loop (~80 seconds) – the product film is 68.8s + end card
     await page.waitForTimeout(80000);
 
   } catch (error) {
@@ -31,10 +35,10 @@ const { chromium } = require('playwright');
     await page.screenshot({ path: 'error.png' });
   }
 
-  // Close the context – this finalises the random video file
+  // Close the context – this finalises the video
   await context.close();
 
-  // Now rename the video to a predictable name
+  // Save the video with a predictable name
   const video = page.video();
   if (video) {
     await video.saveAs('video.webm');
