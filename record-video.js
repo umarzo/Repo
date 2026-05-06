@@ -3,7 +3,7 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 720 },
+    viewport: { width: 1280, height: 720 },      // desktop size
     recordVideo: {
       dir: '.',
       size: { width: 1280, height: 720 },
@@ -13,20 +13,20 @@ const { chromium } = require('playwright');
   const page = await context.newPage();
 
   try {
-    // The new ad file must be named exactly golex_ad_premium-v5.html
-    await page.goto('http://localhost:8080/golex_ad_premium-v5.html', {
+    // Load the new ad file
+    await page.goto('http://localhost:8080/golex_ad_v7.html', {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
 
-    // The ad container still has id="ad" – wait for it
+    // Wait for the main ad container – it still has id="ad"
     await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
 
-    // Debug screenshot (optional, can be removed)
+    // Debug screenshot (optional, you can remove this line later)
     await page.screenshot({ path: 'page-loaded.png' });
 
-    // Record the full cinematic loop (~77 s) plus a small buffer → 90 s safe
-    const recordDuration = 90000;
+    // The full scene loop is ≈68.4s, we wait 80s to be safe
+    const recordDuration = 80000;   // 80 seconds
     console.log(`Recording for ${recordDuration / 1000} seconds…`);
     await page.waitForTimeout(recordDuration);
 
@@ -35,9 +35,9 @@ const { chromium } = require('playwright');
     await page.screenshot({ path: 'error.png' });
   }
 
-  // Save video before closing the browser
+  // Save the video before closing the browser
   const video = page.video();
-  await context.close();
+  await context.close();   // finalises the video file
 
   if (video) {
     await video.saveAs('video.webm');
