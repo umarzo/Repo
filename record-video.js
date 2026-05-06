@@ -13,38 +13,37 @@ const { chromium } = require('playwright');
   const page = await context.newPage();
 
   try {
-    await page.goto('http://localhost:8080/adx1.html', {
+    // The new ad file must be named exactly golex_ad_premium-v5.html
+    await page.goto('http://localhost:8080/golex_ad_premium-v5.html', {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
 
-    // Wait for a known present element (the phone screen) to confirm the page is ready
-    await page.waitForSelector('#screen-inner', { state: 'visible', timeout: 15000 });
+    // The ad container still has id="ad" – wait for it
+    await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
 
-    // Optional: take a debug screenshot
+    // Debug screenshot (optional, can be removed)
     await page.screenshot({ path: 'page-loaded.png' });
 
-    // Give the animation a moment to initialise (the script auto‑starts after 0.5s)
-    await page.waitForTimeout(1000);
-
-    // Record the full animation loop (~80 seconds) – the product film is 68.8s + end card
-    await page.waitForTimeout(80000);
+    // Record the full cinematic loop (~77 s) plus a small buffer → 90 s safe
+    const recordDuration = 90000;
+    console.log(`Recording for ${recordDuration / 1000} seconds…`);
+    await page.waitForTimeout(recordDuration);
 
   } catch (error) {
     console.error('Error occurred:', error.message);
     await page.screenshot({ path: 'error.png' });
   }
 
-  // Close the context – this finalises the video
+  // Save video before closing the browser
+  const video = page.video();
   await context.close();
 
-  // Save the video with a predictable name
-  const video = page.video();
   if (video) {
     await video.saveAs('video.webm');
     console.log('Video saved as video.webm');
   } else {
-    console.error('No video object found – something went wrong');
+    console.error('No video object found');
   }
 
   await browser.close();
