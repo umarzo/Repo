@@ -3,41 +3,47 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 720 },      // desktop size
+    viewport: { width: 854, height: 480 },   // lighter than 720p
     recordVideo: {
       dir: '.',
-      size: { width: 1280, height: 720 },
+      size: { width: 854, height: 480 },
     },
   });
 
   const page = await context.newPage();
 
   try {
-    // Load the new ad file
     await page.goto('http://localhost:8080/golex_ad_v7.html', {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
 
-    // Wait for the main ad container – it still has id="ad"
     await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
 
-    // Debug screenshot (optional, you can remove this line later)
-    await page.screenshot({ path: 'page-loaded.png' });
+    // Turn off the most expensive background effects
+    await page.evaluate(() => {
+      // Hide the particle canvas
+      const canvas = document.getElementById('particles-canvas');
+      if (canvas) canvas.style.display = 'none';
+      // Hide the grain overlay
+      const grain = document.getElementById('grain-overlay');
+      if (grain) grain.style.display = 'none';
+    });
 
-    // The full scene loop is ≈68.4s, we wait 80s to be safe
-    const recordDuration = 80000;   // 80 seconds
-    console.log(`Recording for ${recordDuration / 1000} seconds…`);
-    await page.waitForTimeout(recordDuration);
+    // Wait a tiny moment for the browser to settle
+    await page.waitForTimeout(500);
+
+    // Record the full loop (80 seconds – safe margin)
+    console.log('Recording for 80 seconds…');
+    await page.waitForTimeout(80000);
 
   } catch (error) {
     console.error('Error occurred:', error.message);
     await page.screenshot({ path: 'error.png' });
   }
 
-  // Save the video before closing the browser
   const video = page.video();
-  await context.close();   // finalises the video file
+  await context.close();
 
   if (video) {
     await video.saveAs('video.webm');
