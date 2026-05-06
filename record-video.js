@@ -3,84 +3,28 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 720 },   // full HD ready
+    viewport: { width: 1280, height: 720 },
     recordVideo: {
       dir: '.',
       size: { width: 1280, height: 720 },
     },
   });
-
   const page = await context.newPage();
 
   try {
-    await page.goto('http://localhost:8080/golex_ad_v7.html', {
+    await page.goto('http://localhost:8080/scenes.html', {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
 
-    await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
+    // Wait for the first scene to be visible – any element with class "scene"
+    await page.waitForSelector('.scene', { state: 'visible', timeout: 10000 });
 
-    // ═══════════════════════════════════════════
-    //  DISABLE ALL HEAVY DECORATIVE EFFECTS
-    // ═══════════════════════════════════════════
-    await page.evaluate(() => {
-      const removeIds = [
-        'particles-canvas', 'grain-overlay', 'bg-orbs', 'bg-pulse-rings',
-        'momentum-flash', 'scene-wipe', 'live-ticker', 'pause-indicator',
-        'kbd-hint', 'custom-cursor', 'custom-cursor-ring',
-        'pgbar-timer', 'scene-name-pill', 'scene-index',
-      ];
-      removeIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-      });
-
-      // Remove floating orbs
-      document.querySelectorAll('.bg-orb').forEach(orb => {
-        orb.style.animation = 'none';
-        orb.style.display = 'none';
-      });
-
-      // Remove 3D phone wrappers
-      document.querySelectorAll('.phone-3d-wrap').forEach(wrap => {
-        const phone = wrap.firstElementChild;
-        if (phone) {
-          wrap.parentNode.insertBefore(phone, wrap);
-        }
-        wrap.remove();
-      });
-
-      // Remove scan‑line pseudo‑elements
-      const style = document.createElement('style');
-      style.textContent = `
-        .golex-phone::after, .chat-phone::after, .explore-phone::after,
-        .create-phone::after, .guild-phone::after, .comm-detail-phone::after,
-        .room-view-phone::after {
-          content: none !important;
-        }
-      `;
-      document.head.appendChild(style);
-
-      // Simplify phone animations
-      document.querySelectorAll(
-        '.golex-phone, .chat-phone, .explore-phone, .create-phone,' +
-        '.comm-detail-phone, .room-view-phone, .guild-phone'
-      ).forEach(ph => {
-        ph.style.animation = 'floatPhone 5s ease-in-out infinite';
-        ph.style.transform = '';
-        ph.style.setProperty('--tilt-x', '');
-        ph.style.setProperty('--tilt-y', '');
-      });
-
-      console.log('All heavy effects disabled');
-    });
-
-    // Small breather to settle
-    await page.waitForTimeout(500);
-
-    // Record the full walkthrough (80 s)
-    console.log('Recording for 80 seconds…');
-    await page.waitForTimeout(80000);
+    // The full loop (8 scenes) is about 18 seconds.
+    // We’ll record two full loops for a nice, complete ad → 40 seconds total.
+    const recordDuration = 40000;   // 40 seconds
+    console.log(`Recording for ${recordDuration / 1000} seconds…`);
+    await page.waitForTimeout(recordDuration);
 
   } catch (error) {
     console.error('Error occurred:', error.message);
