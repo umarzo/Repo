@@ -1,56 +1,100 @@
 const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
+
+// Config
+const FRAME_RATE = 30;               // frames per second
+const RECORD_DURATION_MS = 80000;    // 80 seconds (covers the full loop)
+const TOTAL_FRAMES = Math.floor(RECORD_DURATION_MS * (FRAME_RATE / 1000));
+const FRAME_INTERVAL_MS = 1000 / FRAME_RATE;
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Zero-pad frame numbers
+function pad(n) {
+  return String(n).padStart(5, '0');
+}
 
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 854, height: 480 },   // lighter than 720p
-    recordVideo: {
-      dir: '.',
-      size: { width: 854, height: 480 },
-    },
+    viewport: { width: 1280, height: 720 },   // keep native resolution
   });
-
   const page = await context.newPage();
 
+  // Create frame directory
+  const framesDir = path.join(__dirname, 'frames');
+  if (fs.existsSync(framesDir)) {
+    fs.rmSync(framesDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(framesDir);
+
   try {
+    console.log('Loading ad...');
     await page.goto('http://localhost:8080/golex_ad_v7.html', {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
-
     await page.waitForSelector('#ad', { state: 'visible', timeout: 15000 });
 
-    // Turn off the most expensive background effects
+    console.log(`Starting screenshot capture: ${FRAME_RATE} fps, ${TOTAL_FRAMES} frames`);
+
+    // Optional: disable heavy effects for performance
     await page.evaluate(() => {
-      // Hide the particle canvas
       const canvas = document.getElementById('particles-canvas');
       if (canvas) canvas.style.display = 'none';
-      // Hide the grain overlay
       const grain = document.getElementById('grain-overlay');
       if (grain) grain.style.display = 'none';
     });
 
-    // Wait a tiny moment for the browser to settle
-    await page.waitForTimeout(500);
+    let frameIndex = 0;
+    const startTime = Date.now();
 
-    // Record the full loop (80 seconds – safe margin)
-    console.log('Recording for 80 seconds…');
-    await page.waitForTimeout(80000);
+    for (let i = 0; i < TOTAL_FRAMES; i++) {
+      const targetTime = startTime + i * FRAME_INTERVAL_MS;
+
+      // Take screenshot
+      await page.screenshot({
+        path: path.join(framesDir, `frame-${pad(i)}.png`),
+      });
+
+      frameIndex++;
+
+      // Wait just enough to stay on schedule
+      const elapsed = Date.now() - startTime;
+      const nextSleep = targetTime - Date.now();
+      if (nextSleep > 0) {
+        await sleep(nextSleep);
+      } else {
+        // We're behind schedule — continue immediately to catch up (no extra sleep)
+        // This may cause missing frames in the video, but the recording won't drift.
+        console.warn(`Frame ${i}: behind schedule by ${-nextSleep} ms`);
+      }
+    }
+
+    console.log('Screenshots completed. Now encoding video with ffmpeg...');
 
   } catch (error) {
-    console.error('Error occurred:', error.message);
+    console.error('Error during capture:', error.message);
     await page.screenshot({ path: 'error.png' });
   }
 
-  const video = page.video();
-  await context.close();
+  await browser.close();
 
-  if (video) {
-    await video.saveAs('video.webm');
-    console.log('Video saved as video.webm');
-  } else {
-    console.error('No video object found');
+  // Encode video with ffmpeg
+  const { execSync } = require('child_process');
+  try {
+    execSync(
+      `ffmpeg -framerate ${FRAME_RATE} -i frames/frame-%05d.png -c:v libx264 -pix_fmt yuv420p -preset fast -crf 23 video.mp4`,
+      { stdio: 'inherit' }
+    );
+    console.log('video.mp4 created successfully');
+  } catch (e) {
+    console.error('ffmpeg encoding failed:', e.message);
   }
 
-  await browser.close();
+  // Clean up frames
+  fs.rmSync(framesDir, { recursive: true, force: true });
 })();
