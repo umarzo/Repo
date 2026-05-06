@@ -1,25 +1,33 @@
-name: Generate Desktop Video
+name: Generate Text Ad Video
+
 on: workflow_dispatch
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install dependencies
         run: npm init -y && npm install playwright
+
       - name: Install Playwright & system deps
         run: npx playwright install chromium --with-deps
+
       - name: Start HTTP server
         run: |
           python3 -m http.server 8080 &
           sleep 2
+
       - name: Record video
-        run: node record-video.js
+        run: node record-text-video.js
+
       - name: Upload video artifact
         uses: actions/upload-artifact@v4
         with:
-          name: golex-ad-video
+          name: golex-text-ad
           path: video.webm
