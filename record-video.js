@@ -3,10 +3,10 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 854, height: 480 },   // keep it light
+    viewport: { width: 1280, height: 720 },   // full HD ready
     recordVideo: {
       dir: '.',
-      size: { width: 854, height: 480 },
+      size: { width: 1280, height: 720 },
     },
   });
 
@@ -24,35 +24,24 @@ const { chromium } = require('playwright');
     //  DISABLE ALL HEAVY DECORATIVE EFFECTS
     // ═══════════════════════════════════════════
     await page.evaluate(() => {
-      // ── Remove full‑screen overlays and canvases ──
       const removeIds = [
-        'particles-canvas',
-        'grain-overlay',
-        'bg-orbs',
-        'bg-pulse-rings',
-        'momentum-flash',
-        'scene-wipe',
-        'live-ticker',
-        'pause-indicator',
-        'kbd-hint',
-        'custom-cursor',
-        'custom-cursor-ring',
-        'pgbar-timer',
-        'scene-name-pill',
-        'scene-index',
+        'particles-canvas', 'grain-overlay', 'bg-orbs', 'bg-pulse-rings',
+        'momentum-flash', 'scene-wipe', 'live-ticker', 'pause-indicator',
+        'kbd-hint', 'custom-cursor', 'custom-cursor-ring',
+        'pgbar-timer', 'scene-name-pill', 'scene-index',
       ];
       removeIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
 
-      // ── Remove floating background orbs ──
+      // Remove floating orbs
       document.querySelectorAll('.bg-orb').forEach(orb => {
         orb.style.animation = 'none';
         orb.style.display = 'none';
       });
 
-      // ── Disable phone 3D wraps (remove perspective loops) ──
+      // Remove 3D phone wrappers
       document.querySelectorAll('.phone-3d-wrap').forEach(wrap => {
         const phone = wrap.firstElementChild;
         if (phone) {
@@ -61,7 +50,7 @@ const { chromium } = require('playwright');
         wrap.remove();
       });
 
-      // ── Remove phone scan‑line pseudo‑elements ──
+      // Remove scan‑line pseudo‑elements
       const style = document.createElement('style');
       style.textContent = `
         .golex-phone::after, .chat-phone::after, .explore-phone::after,
@@ -72,21 +61,15 @@ const { chromium } = require('playwright');
       `;
       document.head.appendChild(style);
 
-      // ── Force all phone float/tilt animations to simple static float ──
+      // Simplify phone animations
       document.querySelectorAll(
         '.golex-phone, .chat-phone, .explore-phone, .create-phone,' +
         '.comm-detail-phone, .room-view-phone, .guild-phone'
       ).forEach(ph => {
         ph.style.animation = 'floatPhone 5s ease-in-out infinite';
-        // Remove any transform overrides added by JS
         ph.style.transform = '';
         ph.style.setProperty('--tilt-x', '');
         ph.style.setProperty('--tilt-y', '');
-      });
-
-      // ── Freeze any remaining heavy background animations ──
-      document.querySelectorAll('.bg-orb, .pulse-ring').forEach(el => {
-        el.style.animation = 'none';
       });
 
       console.log('All heavy effects disabled');
