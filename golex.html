@@ -41,7 +41,7 @@
   "offers": {
     "@type": "Offer",
     "price": "0",
-    "priceCurrency": "INR"
+    "priceCurrency": "USD"
   }
 }
 </script>
@@ -58,7 +58,7 @@
 <link rel="preload" as="style" fetchpriority="high" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"></noscript>
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.383.0/dist/umd/lucide.min.js" defer></script>
-<script src="https://sdk.cashfree.com/js/v3/cashfree.js" defer></script>
+<script src="https://js.stripe.com/v3/" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
@@ -16877,8 +16877,8 @@ button, [role="button"], label[for], a { cursor: pointer; }
       <div class="field"><label for="modal-username-input">Username</label><input class="input" type="text" id="modal-username-input" maxlength="24"><div class="error-text" id="modal-username-error"><i data-lucide="zap" class="lucide" width="12" height="12"></i> That username is taken</div></div>
       <div class="pro-status-panel inactive" id="pro-status-panel">
         <div style="color:var(--muted);font-size:11px;font-family:var(--font-mono);font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;">Golex Pro</div>
-        <div class="pro-status-desc">Upgrade to Pro for ₹249/month — gold badge, priority placement, 720p/1080p video calls, 128kbps studio audio, 2× file uploads and more.</div>
-        <button class="pro-upgrade-btn" id="pro-upgrade-btn-profile" type="button"><i data-lucide="zap" class="lucide" width="16" height="16"></i> Upgrade to Pro — ₹249/mo</button>
+        <div class="pro-status-desc">Upgrade to Pro for $4.99/month — gold badge, priority placement, 720p/1080p video calls, 128kbps studio audio, 2× file uploads and more.</div>
+        <button class="pro-upgrade-btn" id="pro-upgrade-btn-profile" type="button"><i data-lucide="zap" class="lucide" width="16" height="16"></i> Upgrade to Pro — $4.99/mo</button>
       </div>
       <div class="pro-views-panel" id="pro-views-panel" style="display:none;">
         <div class="pro-views-label"><i data-lucide="eye" class="lucide" width="16" height="16"></i> Profile Views</div>
@@ -17021,7 +17021,7 @@ button, [role="button"], label[for], a { cursor: pointer; }
       <button class="pro-modal-x" id="pro-modal-close" aria-label="Close"><i data-lucide="x" class="lucide" width="16" height="16"></i></button>
     </div>
     <div class="pro-price-row">
-      <span class="pro-price-big">₹249</span>
+      <span class="pro-price-big">$4.99</span>
       <span class="pro-price-per">/ month</span>
     </div>
     <ul class="pro-bens">
@@ -17037,10 +17037,10 @@ button, [role="button"], label[for], a { cursor: pointer; }
       <li><span class="pi"><i data-lucide="video" class="lucide" width="16" height="16"></i></span><span><strong>HD Video Calls</strong> — 720p in DM calls (free: 480p) · 1080p Full HD in project calls (free: 720p)</span></li>
       <li><span class="pi"><i data-lucide="folder" class="lucide" width="16" height="16"></i></span><span><strong>2× Bigger File Uploads</strong> — 1MB in chats (free: 500KB) · 20MB in projects (free: 10MB) · 120s voice notes (free: 60s)</span></li>
     </ul>
-    <button class="pro-pay-btn" id="pro-pay-btn" type="button"><i data-lucide="zap" class="lucide" width="16" height="16"></i> Pay ₹249 and Activate Pro</button>
+    <button class="pro-pay-btn" id="pro-pay-btn" type="button"><i data-lucide="zap" class="lucide" width="16" height="16"></i> Start Stripe Checkout</button>
     <p class="pro-modal-note">
-      Secured by Cashfree &middot; One-time ₹249 &middot; 30-day access<br>
-      No auto-renewal — you choose when to renew
+      Secured by Stripe &middot; Monthly $4.99 subscription &middot; 30-day billing cycle<br>
+      Manage renewal and cancellation from Stripe billing
     </p>
   </div>
 </div>
@@ -37450,10 +37450,10 @@ ProjectSystem.init();
 
 const GOLEX_PRO = {
   WORKER_URL: 'https://muddy-sun-1035.umarzo1001.workers.dev/',  // e.g. https://golex-pay.YOUR-NAME.workers.dev
-  MODE:     'production',  // 'sandbox' | 'production'
-  AMOUNT:   249,
+  STRIPE_PUBLISHABLE_KEY: 'pk_test_REPLACE_ME',
+  AMOUNT_CENTS: 499,
   DAYS:     30,
-  CURRENCY: 'INR',
+  CURRENCY: 'USD',
   NAME:     'Golex'
 };
 
@@ -37533,26 +37533,31 @@ function _startProExpiryWatcher(uid) {
 }
 
 // ── recoverPendingProOrder ──────────────────────────────────────────────────
-// Called once on every sign-in. If the user's browser crashed / closed after
-// the Cashfree payment went through but before /activate returned (e.g. UPI
-// redirect, tab killed), they paid but never got Pro.
-// We stored the order_id in localStorage before opening the checkout modal.
-// Here we silently re-attempt activation — the Worker checks PAID status, so
-// if they didn't pay this is a harmless no-op (returns 402 silently).
+// Called once on every sign-in. If the browser closes after Stripe checkout
+// but before /activate returns, the user paid but didn't get Pro locally.
+// We store checkout_session_id in localStorage before redirecting to Stripe
+// and silently re-attempt activation on next app load.
 async function recoverPendingProOrder() {
-  let pendingOrderId;
-  try { pendingOrderId = localStorage.getItem('golex-pending-order'); } catch(_) {}
-  if (!pendingOrderId || !state.currentUser) return;
+  const qp = new URLSearchParams(location.search);
+  const qsSessionId = qp.get('session_id');
+  const fromSuccessUrl = qp.get('proSuccess') === '1' && !!qsSessionId;
+  let pendingSessionId = qsSessionId;
+  if (!pendingSessionId) {
+    try { pendingSessionId = localStorage.getItem('golex-pending-pro-session'); } catch(_) {}
+  }
+  if (!pendingSessionId || !state.currentUser) return;
   if (isProActive()) {
-    // Already Pro — clear the stale key and return
-    try { localStorage.removeItem('golex-pending-order'); } catch(_) {}
+    try { localStorage.removeItem('golex-pending-pro-session'); } catch(_) {}
     return;
   }
-  DEBUG && console.log('[GolexPro] Recovering pending order:', pendingOrderId);
-  // Clear before calling so a crash inside doesn't cause infinite retries
-  try { localStorage.removeItem('golex-pending-order'); } catch(_) {}
-  // silent=true — only shows success toast, never an error toast
-  await activateGolexPro(pendingOrderId, true);
+  DEBUG && console.log('[GolexPro] Recovering pending Stripe session:', pendingSessionId);
+  try { localStorage.removeItem('golex-pending-pro-session'); } catch(_) {}
+  if (fromSuccessUrl && history.replaceState) {
+    qp.delete('session_id'); qp.delete('proSuccess');
+    const q = qp.toString();
+    history.replaceState({}, document.title, location.pathname + (q ? ('?' + q) : '') + location.hash);
+  }
+  await activateGolexPro(pendingSessionId, !fromSuccessUrl);
 }
 
 function openProModal() {
@@ -37562,7 +37567,7 @@ function closeProModal() {
   document.getElementById('pro-upgrade-modal')?.classList.remove('open');
 }
 
-async function activateGolexPro(paymentId, silent = false) {
+async function activateGolexPro(sessionId, silent = false) {
   const uid = state.currentUser?.uid;
   if (!uid) return;
 
@@ -37571,12 +37576,12 @@ async function activateGolexPro(paymentId, silent = false) {
   try {
     idToken = await state.currentUser.getIdToken(true);
   } catch(tokenErr) {
-    if (!silent) Toast.error('Activation error — could not get auth token. Save this payment ID: ' + paymentId);
+    if (!silent) Toast.error('Activation error — could not get auth token. Save this Stripe session ID: ' + sessionId);
     DEBUG && console.error('[GolexPro] getIdToken error:', tokenErr);
     return;
   }
 
-  // ── Step 2: ask the Worker to verify the Cashfree order and write Pro to Firebase ──
+  // ── Step 2: ask the Worker to verify Stripe checkout and write Pro to Firebase ──
   //    The Worker uses the Firebase Database Secret (admin-level) so it can write
   //    isPro and proExpiry which are admin-only fields in the security rules.
   try {
@@ -37584,16 +37589,16 @@ async function activateGolexPro(paymentId, silent = false) {
     const res = await fetch(GOLEX_PRO.WORKER_URL + 'activate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId: paymentId, idToken })
+      body: JSON.stringify({ sessionId, idToken })
     });
 
     const result = await res.json();
 
     if (!res.ok || result.error) {
       // 402 = order not paid — expected for silent recovery attempts when user closed modal
-      if (res.status === 402 && silent) { DEBUG && console.log('[GolexPro] Silent activation: order not paid yet —', paymentId); return; }
+      if (res.status === 402 && silent) { DEBUG && console.log('[GolexPro] Silent activation: session not paid yet —', sessionId); return; }
       const msg = result.error || `Worker error ${res.status}`;
-      if (!silent) Toast.error('Activation failed: ' + msg + ' — save your payment ID: ' + paymentId);
+      if (!silent) Toast.error('Activation failed: ' + msg + ' — save your Stripe session ID: ' + sessionId);
       DEBUG && console.error('[GolexPro] /activate error:', result);
       return;
     }
@@ -37638,12 +37643,12 @@ async function activateGolexPro(paymentId, silent = false) {
     Toast.success('<i data-lucide="award" class="lucide" width="16" height="16"></i> Golex Pro is active! Welcome to Pro.', 6000);
 
   } catch (e) {
-    if (!silent) Toast.error('Activation error — save this payment ID and contact us: ' + paymentId);
+    if (!silent) Toast.error('Activation error — save this Stripe session ID and contact us: ' + sessionId);
     DEBUG && console.error('[GolexPro] activateGolexPro error:', e);
   }
 }
 
-async function launchCashfree() {
+async function launchStripeCheckout() {
   if (!state.currentUser) { Toast.error('Please sign in first.'); return; }
 
   // Guard: block payment if already Pro with more than 7 days remaining.
@@ -37662,45 +37667,56 @@ async function launchCashfree() {
   }
 
   const btn = document.getElementById('pro-pay-btn');
+  const pk = (GOLEX_PRO.STRIPE_PUBLISHABLE_KEY || '').trim();
+  if (!pk || pk === 'pk_test_REPLACE_ME' || pk === 'YOUR_STRIPE_PUBLISHABLE_KEY') {
+    Toast.error('Set GOLEX_PRO.STRIPE_PUBLISHABLE_KEY before accepting Pro payments.');
+    return;
+  }
+  if (typeof Stripe === 'undefined') {
+    Toast.error('Stripe.js not loaded. Check your internet connection and reload.');
+    return;
+  }
   const resetBtn = () => {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="zap" class="lucide" width="16" height="16"></i> Pay ₹249 and Activate Pro';
+      btn.innerHTML = '<i data-lucide="zap" class="lucide" width="16" height="16"></i> Start Stripe Checkout';
       if (window.lucide) lucide.createIcons({ nodes: [btn] });
     }
   };
 
-  if (btn) { btn.disabled = true; btn.textContent = 'Creating order…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating checkout…'; }
 
   try {
     const uid      = state.currentUser.uid;
     const email    = state.currentUser.email || '';
     const username = (state.username || uid).substring(0, 50);
 
-    let orderData;
+    let checkoutData;
     try {
-      const orderRes = await fetch(GOLEX_PRO.WORKER_URL, {
+      const sessionRes = await fetch(GOLEX_PRO.WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_amount:   GOLEX_PRO.AMOUNT,
-          order_currency: GOLEX_PRO.CURRENCY,
-          order_note:     'Golex Pro — 30 Day Membership',
+          amount_cents: GOLEX_PRO.AMOUNT_CENTS,
+          currency: GOLEX_PRO.CURRENCY,
+          order_note: 'Golex Pro Monthly',
+          success_url: `${location.origin}${location.pathname}?proSuccess=1&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${location.origin}${location.pathname}?proCanceled=1`,
           customer_details: {
             customer_id:    uid.substring(0, 50),
             customer_email: email,
             customer_name:  username,
-            customer_phone: '9999999999'
+            customer_phone: ''
           }
         })
       });
 
-      orderData = await orderRes.json();
+      checkoutData = await sessionRes.json();
 
-      if (!orderRes.ok) {
-        const msg = orderData?.message || orderData?.error || `Worker error ${orderRes.status}`;
-        console.error('[GolexPro] Worker/Cashfree error:', orderData);
-        Toast.error('Order failed: ' + msg);
+      if (!sessionRes.ok) {
+        const msg = checkoutData?.message || checkoutData?.error || `Worker error ${sessionRes.status}`;
+        console.error('[GolexPro] Worker/Stripe error:', checkoutData);
+        Toast.error('Checkout creation failed: ' + msg);
         resetBtn(); return;
       }
     } catch (fetchErr) {
@@ -37709,51 +37725,24 @@ async function launchCashfree() {
       resetBtn(); return;
     }
 
-    const sessionId = orderData.payment_session_id;
+    const sessionId = checkoutData.session_id;
     if (!sessionId) {
-      console.error('[GolexPro] No session ID in response:', orderData);
-      Toast.error('Cashfree returned no session ID. Check Worker logs.');
+      console.error('[GolexPro] No Stripe session ID in response:', checkoutData);
+      Toast.error('Stripe returned no checkout session ID. Check Worker logs.');
       resetBtn(); return;
     }
 
-    if (typeof Cashfree === 'undefined') {
-      Toast.error('Cashfree SDK not loaded. Check your internet connection and reload.');
-      resetBtn(); return;
-    }
-
-    if (btn) btn.textContent = 'Opening payment…';
-    const cashfree = await Cashfree({ mode: GOLEX_PRO.MODE });
-
-    resetBtn(); // re-enable button before modal so user can retry if they close it
-
-    // ── Persist the order_id BEFORE opening the checkout modal.
-    //    If the browser crashes / popup closes without returning paymentDetails,
-    //    recoverPendingProOrder() will pick this up on the next app load and
-    //    silently re-attempt activation (Worker confirms PAID status server-side).
-    const cfOrderId = orderData.order_id;
-    try { localStorage.setItem('golex-pending-order', cfOrderId); } catch(_) {}
-
-    const checkoutResult = await cashfree.checkout({
-      paymentSessionId: sessionId,
-      redirectTarget:   '_modal'
-    });
-
-    if (checkoutResult?.error) {
-      console.error('[GolexPro] Checkout error:', checkoutResult.error);
-      Toast.error('Payment failed: ' + (checkoutResult.error.message || 'Try again.'));
-      // Clear pending order only on a definitive payment error (not a modal-close)
-      try { localStorage.removeItem('golex-pending-order'); } catch(_) {}
+    try { localStorage.setItem('golex-pending-pro-session', sessionId); } catch(_) {}
+    if (btn) btn.textContent = 'Redirecting to Stripe…';
+    const stripe = Stripe(pk);
+    const redir = await stripe.redirectToCheckout({ sessionId });
+    if (redir?.error) {
+      console.error('[GolexPro] Stripe redirect error:', redir.error);
+      Toast.error('Stripe checkout failed: ' + (redir.error.message || 'Try again.'));
+      try { localStorage.removeItem('golex-pending-pro-session'); } catch(_) {}
+      resetBtn();
       return;
     }
-
-    // ── Always attempt activation after the modal closes.
-    //    If paymentDetails is present → payment confirmed by SDK.
-    //    If paymentDetails is absent  → modal was closed early but payment may still
-    //    have gone through (network delay, UPI redirect, etc.).
-    //    The Worker independently queries Cashfree and returns 402 if not PAID,
-    //    so calling this when the user didn't pay is completely safe and silent.
-    await activateGolexPro(cfOrderId, /* silent= */ !checkoutResult?.paymentDetails);
-    try { localStorage.removeItem('golex-pending-order'); } catch(_) {}
 
   } catch (e) {
     console.error('[GolexPro] Unexpected error:', e);
@@ -37782,7 +37771,7 @@ function renderProStatusUI() {
       ${sinceStr  ? `<div class="pro-status-expiry" style="color:var(--muted)">Member since: ${sinceStr}</div>` : ''}
       ${expiryStr ? `<div class="pro-status-expiry" style="color:${nearExp?'#EF4444':'var(--muted)'}">
         ${nearExp ? 'Expires soon: ' : 'Valid until: '}${expiryStr}</div>` : ''}
-      ${nearExp   ? `<button class="pro-upgrade-btn pro-renew-btn" id="pro-renew-btn" type="button"><i data-lucide="refresh-cw" class="lucide" width="16" height="16"></i> Renew for ₹249</button>` : ''}
+      ${nearExp   ? `<button class="pro-upgrade-btn pro-renew-btn" id="pro-renew-btn" type="button"><i data-lucide="refresh-cw" class="lucide" width="16" height="16"></i> Renew for $4.99</button>` : ''}
     `;
     document.getElementById('pro-renew-btn')?.addEventListener('click', openProModal);
   } else {
@@ -37792,11 +37781,11 @@ function renderProStatusUI() {
         ${expired ? 'Golex Pro — Expired' : 'Golex Pro'}
       </div>
       <div class="pro-status-desc">${expired
-        ? 'Your Pro membership has expired. Renew for ₹249 to restore your badge, boosted listing, and featured ads.'
-        : 'Upgrade to Pro for ₹249/month — gold badge, HD video calls, studio audio, 2× uploads, and more.'
+        ? 'Your Pro membership has expired. Renew for $4.99 to restore your badge, boosted listing, and featured ads.'
+        : 'Upgrade to Pro for $4.99/month — gold badge, HD video calls, studio audio, 2× uploads, and more.'
       }</div>
       <button class="pro-upgrade-btn" id="pro-upgrade-btn-profile" type="button">
-        ${expired ? '<i data-lucide="refresh-cw" class="lucide" width="16" height="16"></i> Renew Pro — ₹249' : '<i data-lucide="zap" class="lucide" width="16" height="16"></i> Upgrade to Pro — ₹249/mo'}
+        ${expired ? '<i data-lucide="refresh-cw" class="lucide" width="16" height="16"></i> Renew Pro — $4.99' : '<i data-lucide="zap" class="lucide" width="16" height="16"></i> Upgrade to Pro — $4.99/mo'}
       </button>
     `;
     document.getElementById('pro-upgrade-btn-profile')?.addEventListener('click', openProModal);
@@ -37829,7 +37818,7 @@ async function loadProViewCount() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('pro-modal-close')?.addEventListener('click', closeProModal);
-  document.getElementById('pro-pay-btn')?.addEventListener('click', launchCashfree);
+  document.getElementById('pro-pay-btn')?.addEventListener('click', launchStripeCheckout);
   document.getElementById('pro-upgrade-modal')?.addEventListener('click', e => {
     if (e.target.id === 'pro-upgrade-modal') closeProModal();
   });
@@ -38178,7 +38167,7 @@ You operate with agentic awareness:
 ━━━ WHAT GOLEX IS ━━━
 Golex (axikora.me/golex) is a skill-based social network for builders, creators, and collaborators. Every user has a primary Skill label (e.g. "React Developer", "UI Designer", "DevOps Engineer", "Indie Hacker"), earns Rep Points through endorsements and activity, and advances through Levels: Beginner (0 pts) → Explorer (50) → Builder (200) → Creator (500) → Expert (1000) → Master (2500) → Legend (5000+).
 
-Key Golex features: Explore feed (24h ephemeral posts), Direct messaging, Skill Guilds (real-time chat per skill), Communities, Audio Rooms, Projects (team workspaces), Stories (24h), Video/voice calls, Endorsements, Golex Pro (₹249/month: gold badge, HD calls, priority search).
+Key Golex features: Explore feed (24h ephemeral posts), Direct messaging, Skill Guilds (real-time chat per skill), Communities, Audio Rooms, Projects (team workspaces), Stories (24h), Video/voice calls, Endorsements, Golex Pro ($4.99/month: gold badge, HD calls, priority search).
 
 ━━━ NOVA'S EXPANDED CAPABILITIES ━━━
 Beyond platform commands, you can answer ANY general query in chat_answer:
@@ -38811,7 +38800,7 @@ async function _novaSendSingle(userText, alreadyAddedUserMsg = false) {
         navigate_to:         `Taking you to ${localParsed.data.screen}! ✈️`,
         navigate_to_guild:   `Opening your Skill Guild — real-time chat with your skill community! 🏅`,
         open_create:         `Opening the create composer — what are we posting? ✍️`,
-        upgrade_pro:         state && state.isPro ? `You're already Pro! ⭐` : `Opening Golex Pro — ₹249/month for gold badge, HD calls & more! ⭐`,
+        upgrade_pro:         state && state.isPro ? `You're already Pro! ⭐` : `Opening Golex Pro — $4.99/month for gold badge, HD calls & more! ⭐`,
         endorse_user:        `Endorsing @${localParsed.data.username}'s skills! ⭐`,
         follow_user:         `Following @${localParsed.data.username}! 👤`,
         unfollow_user:       `Unfollowing @${localParsed.data.username}…`,
@@ -39409,7 +39398,7 @@ async function novaExecuteAction(action, data) {
         `**📊 Stats & Nav**\n` +
         `• "my stats" — rep, level, followers\n` +
         `• "go to [screen]" — explore, messages, etc.\n` +
-        `• "upgrade" — Golex Pro (₹249/mo)\n\n` +
+        `• "upgrade" — Golex Pro ($4.99/mo)\n\n` +
         `**🧠 General AI**\n` +
         `• Ask me anything — coding, writing, math, advice\n` +
         `• "explain [concept]", "write me [text]", "debug [code]"\n` +
@@ -39593,10 +39582,10 @@ async function novaExecuteAction(action, data) {
       }
       if (typeof openProModal === 'function') {
         openProModal();
-        novaAddMessage(`Opening Golex Pro upgrade — ₹249/month for gold badge, HD calls, studio audio & more! ⭐`, 'ai');
+        novaAddMessage(`Opening Golex Pro upgrade — $4.99/month for gold badge, HD calls, studio audio & more! ⭐`, 'ai');
       } else {
         if (typeof navTo === 'function') navTo('profile-screen', 'nav-profile');
-        novaAddMessage(`Head to your Profile and tap "Upgrade to Pro" — ₹249/month for the full Pro experience! ⭐`, 'ai');
+        novaAddMessage(`Head to your Profile and tap "Upgrade to Pro" — $4.99/month for the full Pro experience! ⭐`, 'ai');
       }
       break;
     }

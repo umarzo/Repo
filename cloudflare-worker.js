@@ -16,9 +16,8 @@
    ─────────────────────────────────────────────────────────────────────────── */
 
 const METERED_APP_NAME='golex';
-/* CASHFREE_ENV is now read from Cloudflare env variables (env.CASHFREE_ENV).
-   Set to 'production' or 'sandbox' in the Cloudflare dashboard.
-   This prevents accidentally routing test payments to the live gateway. */
+/* Stripe mode is controlled by the keys in Cloudflare env variables.
+   Use test keys for test mode and live keys for production mode. */
 /* FIREBASE_WEB_API_KEY moved to env.FIREBASE_WEB_API_KEY — do not hardcode here */
 const PRO_DAYS=30;
 
@@ -128,7 +127,11 @@ async function grantPro(uid,paymentId,env){const now=Date.now();const ex=await f
 /* Store minimal PII: only uid and paymentId. Resolve username/email from users/$uid
    if needed later — never log PII in the audit trail. */
 await fbPush('hq/proActivations',{uid,paymentId,activatedAt:now,expiry,source:'worker'},env).catch(e=>console.error('[grantPro] proActivations push:',e.message));return{expiry,proSince};}
-async function verifyCfSig(raw,ts,sig,env){const enc=new TextEncoder();const key=await crypto.subtle.importKey('raw',enc.encode(env.CASHFREE_SECRET_KEY),{name:'HMAC',hash:'SHA-256'},false,['sign']);const buf=await crypto.subtle.sign('HMAC',key,enc.encode(ts+raw));return btoa(String.fromCharCode(...new Uint8Array(buf)))===sig;}
+async function hmacSha256Hex(secret,payload){const enc=new TextEncoder();const key=await crypto.subtle.importKey('raw',enc.encode(secret||''),{name:'HMAC',hash:'SHA-256'},false,['sign']);const sigBuf=await crypto.subtle.sign('HMAC',key,enc.encode(payload));return Array.from(new Uint8Array(sigBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+function safeEq(a,b){if(typeof a!=='string'||typeof b!=='string'||a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=(a.charCodeAt(i)^b.charCodeAt(i));return diff===0;}
+async function verifyStripeSig(raw,sigHeader,env){if(!sigHeader||!env.STRIPE_WEBHOOK_SECRET)return false;const parts=sigHeader.split(',').map(s=>s.trim());let ts='';const v1=[];for(const p of parts){const i=p.indexOf('=');if(i===-1)continue;const k=p.slice(0,i),v=p.slice(i+1);if(k==='t')ts=v;else if(k==='v1')v1.push(v.toLowerCase());}if(!ts||!v1.length)return false;const age=Math.abs(Math.floor(Date.now()/1000)-Number(ts));if(!Number.isFinite(age)||age>300)return false;const expected=(await hmacSha256Hex(env.STRIPE_WEBHOOK_SECRET,`${ts}.${raw}`)).toLowerCase();return v1.some(sig=>safeEq(sig,expected));}
+async function stripeRequest(path,method,formBody,env){const opts={method,headers:{'Authorization':'Bearer '+env.STRIPE_SECRET_KEY}};if(formBody&&method!=='GET'){opts.headers['Content-Type']='application/x-www-form-urlencoded';opts.body=new URLSearchParams(formBody).toString();}const res=await fetch('https://api.stripe.com/v1'+path,opts);const text=await res.text();let json;try{json=JSON.parse(text);}catch{json={raw:text};}return{ok:res.ok,status:res.status,body:json};}
+async function stripeGetSubscription(subId,env){if(!subId)return null;const r=await stripeRequest('/subscriptions/'+encodeURIComponent(subId),'GET',null,env);return r.ok?r.body:null;}
 
 export default{async fetch(request,env,ctx){
 /* ── Env guard — fail fast with a clear error instead of leaking DB structure */
@@ -147,14 +150,8 @@ if(!env.ALLOWED_ORIGIN){
 const ALLOWED_ORIGIN=env.ALLOWED_ORIGIN;
 const GROQ_API_KEY=env.GROQ_API_KEY;
 const METERED_API_KEY=env.METERED_API_KEY;
-const CASHFREE_APP_ID=env.CASHFREE_APP_ID;
-const CASHFREE_SECRET_KEY=env.CASHFREE_SECRET_KEY;
-/* Read CASHFREE_ENV from env var — never hardcode. Default to 'sandbox' to prevent
-   accidental live-gateway charges if the variable is not set. */
-const CASHFREE_ENV=env.CASHFREE_ENV||'sandbox';
 const url=new URL(request.url);
 const ch=corsHeaders(ALLOWED_ORIGIN);
-const cfBaseUrl=CASHFREE_ENV==='production'?'https://api.cashfree.com':'https://sandbox.cashfree.com';
 function jr(d,s){return new Response(JSON.stringify(d),{status:s||200,headers:{'Content-Type':'application/json',...ch}});}
 if(request.method==='OPTIONS')return new Response(null,{status:204,headers:ch});
 
@@ -164,30 +161,81 @@ if(url.pathname==='/turn'&&request.method==='GET'){const token=request.headers.g
 /* ── /nova ─────────────────────────────────────────────────────────────────── */
 if(url.pathname==='/nova'&&request.method==='POST'){const token=request.headers.get('X-Firebase-Token');let uid;try{uid=await getUidFromToken(token,FIREBASE_WEB_API_KEY);}catch(e){return jr({error:'Unauthorized'},401);}const rl=await checkAndIncrRateLimit(uid,'nova',env);if(!rl.ok){const waitMins=Math.ceil(rl.retryAfter/60000);return jr({error:'Rate limited',retryAfter:rl.retryAfter,message:`Nova limit reached (20/hr). Try again in ${waitMins} minute${waitMins===1?'':'s'}.`},429);}let body;try{body=await request.json();}catch{return jr({error:'Invalid JSON'},400);}const groqRes=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_API_KEY},body:JSON.stringify(body)});const groqBody=await groqRes.text();return new Response(groqBody,{status:groqRes.status,headers:{'Content-Type':'application/json',...ch}});}
 
-/* ── / (Cashfree order creation) ───────────────────────────────────────────── */
-if(url.pathname==='/'&&request.method==='POST'){let data;try{data=await request.json();}catch{return jr({error:'Invalid JSON'},400);}const cfRes=await fetch(cfBaseUrl+'/pg/orders',{method:'POST',headers:{'Content-Type':'application/json','x-client-id':CASHFREE_APP_ID,'x-client-secret':CASHFREE_SECRET_KEY,'x-api-version':'2023-08-01'},body:JSON.stringify({order_id:'golex_'+Date.now()+'_'+crypto.randomUUID().replace(/-/g,'').slice(0,8),order_amount:data.order_amount,order_currency:data.order_currency||'INR',order_note:data.order_note||'Golex Pro',customer_details:data.customer_details})});const cfBody=await cfRes.json();if(!cfRes.ok)return new Response(JSON.stringify({error:cfBody.message||'Cashfree error',details:cfBody}),{status:cfRes.status,headers:{'Content-Type':'application/json',...ch}});return jr({payment_session_id:cfBody.payment_session_id,order_id:cfBody.order_id},200);}
+/* ── / (Stripe checkout session creation) ──────────────────────────────────── */
+if(url.pathname==='/'&&request.method==='POST'){
+if(!env.STRIPE_SECRET_KEY)return jr({error:'Worker misconfigured: STRIPE_SECRET_KEY not set'},500);
+let data;try{data=await request.json();}catch{return jr({error:'Invalid JSON'},400);}
+const customer=data.customer_details||{};
+const uid=((customer.customer_id||'')+'').substring(0,128);
+if(!uid)return jr({error:'Missing customer_details.customer_id'},400);
+const amountCents=Math.max(50,Math.round(Number(data.amount_cents||data.order_amount||499)));
+const currency=((data.currency||data.order_currency||env.STRIPE_DEFAULT_CURRENCY||'usd')+'').toLowerCase();
+const successUrl=(data.success_url||`${ALLOWED_ORIGIN}/?proSuccess=1&session_id={CHECKOUT_SESSION_ID}`).toString();
+const cancelUrl=(data.cancel_url||`${ALLOWED_ORIGIN}/?proCanceled=1`).toString();
+const body={'mode':'subscription','success_url':successUrl,'cancel_url':cancelUrl,'client_reference_id':uid,'metadata[uid]':uid,'subscription_data[metadata][uid]':uid,'line_items[0][quantity]':'1'};
+if(customer.customer_email)body['customer_email']=(customer.customer_email+'').substring(0,320);
+if(env.STRIPE_PRICE_ID){body['line_items[0][price]']=env.STRIPE_PRICE_ID;}
+else{body['line_items[0][price_data][currency]']=currency;body['line_items[0][price_data][unit_amount]']=String(amountCents);body['line_items[0][price_data][recurring][interval]']='month';body['line_items[0][price_data][product_data][name]']=((data.order_note||'Golex Pro Monthly')+'').substring(0,120);}
+const stripeRes=await stripeRequest('/checkout/sessions','POST',body,env);
+if(!stripeRes.ok)return jr({error:stripeRes.body?.error?.message||'Stripe session creation failed',details:stripeRes.body},stripeRes.status||502);
+return jr({session_id:stripeRes.body.id,checkout_url:stripeRes.body.url,order_id:stripeRes.body.id},200);}
 
 /* ── /activate ─────────────────────────────────────────────────────────────── */
-if(url.pathname==='/activate'&&request.method==='POST'){let b;try{b=await request.json();}catch{return jr({error:'Bad JSON'},400);}const{orderId,idToken}=b||{};if(!orderId||!idToken)return jr({error:'Missing orderId or idToken'},400);let uid;try{uid=await getUidFromToken(idToken,FIREBASE_WEB_API_KEY);}catch(e){return jr({error:'Auth: '+e.message},401);}
-/* ── Idempotency: if this orderId was already processed, return the stored result immediately */
-try{const already=await withTimeout(fbGet(`hq/processedOrders/${orderId}`,env),6000,'idempotency-check');if(already){return jr({success:true,expiry:already.expiry,proSince:already.proSince,idempotent:true},200);}}catch(e){/* key not found is expected on first run; a timeout here is non-fatal, log and continue */console.error('[activate] idempotency check error:',e.message);}
-let order;try{const r=await fetch(cfBaseUrl+'/pg/orders/'+orderId,{headers:{'x-client-id':CASHFREE_APP_ID,'x-client-secret':CASHFREE_SECRET_KEY,'x-api-version':'2023-08-01'}});if(!r.ok)throw new Error('CF '+r.status);order=await r.json();}catch(e){console.error('[activate] CF order fetch:',e.message);return jr({error:'Order check: '+e.message},502);}if(order.order_status!=='PAID')return jr({error:'Not paid: '+order.order_status},402);const cid=(order.customer_details?.customer_id||'');if(!uid.startsWith(cid)&&!cid.startsWith(uid.substring(0,50)))return jr({error:'Order/user mismatch'},403);let res;try{res=await grantPro(uid,orderId,env);}catch(e){console.error('[activate] grantPro:',e.message);return jr({error:'DB write: '+e.message},500);}
-/* Mark orderId as processed — use fbPatch (PATCH/merge) not fbSet (PUT/overwrite)
+if(url.pathname==='/activate'&&request.method==='POST'){let b;try{b=await request.json();}catch{return jr({error:'Bad JSON'},400);}const{sessionId,idToken}=b||{};if(!sessionId||!idToken)return jr({error:'Missing sessionId or idToken'},400);let uid;try{uid=await getUidFromToken(idToken,FIREBASE_WEB_API_KEY);}catch(e){return jr({error:'Auth: '+e.message},401);}
+/* ── Idempotency: if this sessionId was already processed, return the stored result immediately */
+try{const already=await withTimeout(fbGet(`hq/processedOrders/${sessionId}`,env),6000,'idempotency-check');if(already){return jr({success:true,expiry:already.expiry,proSince:already.proSince,idempotent:true},200);}}catch(e){console.error('[activate] idempotency check error:',e.message);}
+const s=await stripeRequest('/checkout/sessions/'+encodeURIComponent(sessionId)+'?expand[]=subscription','GET',null,env);
+if(!s.ok){console.error('[activate] Stripe session fetch:',s.body);return jr({error:'Session check failed'},502);}
+const session=s.body;
+if(session.status!=='complete')return jr({error:'Checkout incomplete: '+session.status},402);
+if(session.payment_status!=='paid'&&session.payment_status!=='no_payment_required')return jr({error:'Payment not settled: '+session.payment_status},402);
+const sid=((session.metadata&&session.metadata.uid)||session.client_reference_id||(session.subscription&&session.subscription.metadata&&session.subscription.metadata.uid)||'').substring(0,128);
+if(!sid||sid!==uid)return jr({error:'Session/user mismatch'},403);
+const paymentId=(session.subscription&&session.subscription.id)||session.payment_intent||session.id;
+let res;try{res=await grantPro(uid,paymentId,env);}catch(e){console.error('[activate] grantPro:',e.message);return jr({error:'DB write: '+e.message},500);}
+/* Mark sessionId as processed — use fbPatch (PATCH/merge) not fbSet (PUT/overwrite)
    to avoid a concurrent webhook write racing and erasing fields.
    Wrapped in ctx.waitUntil so the idempotency marker is guaranteed to land
    before the worker isolate is torn down (double-charge guard). */
-ctx.waitUntil(fbPatch(`hq/processedOrders/${orderId}`,{uid,expiry:res.expiry,proSince:res.proSince,processedAt:Date.now()},env).catch(e=>console.error('[activate] processedOrders write:',e.message)));
+ctx.waitUntil(fbPatch(`hq/processedOrders/${sessionId}`,{uid,expiry:res.expiry,proSince:res.proSince,processedAt:Date.now(),gateway:'stripe'},env).catch(e=>console.error('[activate] processedOrders write:',e.message)));
 return jr({success:true,expiry:res.expiry,proSince:res.proSince},200);}
 
-/* ── /webhook (Cashfree) ───────────────────────────────────────────────────── */
-if(url.pathname==='/webhook'&&request.method==='POST'){const raw=await request.text();const ts=request.headers.get('x-webhook-timestamp')||'';const sig=request.headers.get('x-webhook-signature')||'';if(!await verifyCfSig(raw,ts,sig,env))return jr({error:'Bad signature'},401);let p;try{p=JSON.parse(raw);}catch{return jr({error:'Bad JSON'},400);}if(p?.type!=='PAYMENT_SUCCESS_WEBHOOK')return jr({received:true},200);const orderId=p?.data?.order?.order_id;const uid=(p?.data?.customer_details?.customer_id||'').substring(0,128);if(!orderId||!uid)return jr({error:'Missing data'},400);
-/* ── Idempotency: Cashfree retries up to 3× on non-200; only process once */
-try{const already=await withTimeout(fbGet(`hq/processedOrders/${orderId}`,env),6000,'webhook-idempotency');if(already){return jr({success:true,idempotent:true},200);}}catch(e){console.error('[webhook] idempotency check error:',e.message);}
-try{const res=await grantPro(uid,orderId,env);
-/* Use fbPatch (merge) not fbSet (overwrite) — avoids a concurrent /activate write
-   racing and erasing fields.
-   Wrapped in ctx.waitUntil — idempotency marker must land before isolate teardown. */
-ctx.waitUntil(fbPatch(`hq/processedOrders/${orderId}`,{uid,expiry:res.expiry,proSince:res.proSince,processedAt:Date.now()},env).catch(e=>console.error('[webhook] processedOrders write:',e.message)));}catch(e){console.error('[webhook] grantPro:',e.message);return jr({error:e.message},500);}return jr({success:true},200);}
+/* ── /webhook (Stripe) ─────────────────────────────────────────────────────── */
+if(url.pathname==='/webhook'&&request.method==='POST'){
+if(!env.STRIPE_WEBHOOK_SECRET)return jr({error:'Worker misconfigured: STRIPE_WEBHOOK_SECRET not set'},500);
+const raw=await request.text();
+const sig=request.headers.get('stripe-signature')||'';
+if(!await verifyStripeSig(raw,sig,env))return jr({error:'Bad signature'},401);
+let evt;try{evt=JSON.parse(raw);}catch{return jr({error:'Bad JSON'},400);}
+const type=evt&&evt.type;
+if(type==='checkout.session.completed'){
+const session=evt.data&&evt.data.object;
+const sessionId=session&&session.id;
+const uid=((session&&session.metadata&&session.metadata.uid)||session.client_reference_id||'').substring(0,128);
+if(!sessionId||!uid)return jr({received:true,skip:'missing-data'},200);
+if(session.payment_status!=='paid'&&session.payment_status!=='no_payment_required')return jr({received:true,skip:'unpaid'},200);
+try{const already=await withTimeout(fbGet(`hq/processedOrders/${sessionId}`,env),6000,'webhook-idempotency');if(already)return jr({success:true,idempotent:true},200);}catch(e){console.error('[webhook] idempotency check error:',e.message);}
+try{const paymentId=session.subscription||session.payment_intent||session.id;const res=await grantPro(uid,paymentId,env);ctx.waitUntil(fbPatch(`hq/processedOrders/${sessionId}`,{uid,expiry:res.expiry,proSince:res.proSince,processedAt:Date.now(),gateway:'stripe',eventId:evt.id},env).catch(e=>console.error('[webhook] processedOrders write:',e.message)));}catch(e){console.error('[webhook] grantPro:',e.message);return jr({error:e.message},500);}
+return jr({success:true},200);
+}
+if(type==='invoice.payment_succeeded'){
+const invoice=evt.data&&evt.data.object;
+if(invoice&&invoice.billing_reason==='subscription_cycle'&&invoice.subscription){
+const invoiceId=invoice.id||evt.id;
+try{const already=await withTimeout(fbGet(`hq/processedOrders/${invoiceId}`,env),6000,'invoice-idempotency');if(already)return jr({success:true,idempotent:true},200);}catch(e){console.error('[webhook] invoice idempotency check:',e.message);}
+const sub=await stripeGetSubscription(invoice.subscription,env);
+const uid=((sub&&sub.metadata&&sub.metadata.uid)||'').substring(0,128);
+if(uid){try{const res=await grantPro(uid,invoice.subscription,env);ctx.waitUntil(fbPatch(`hq/processedOrders/${invoiceId}`,{uid,expiry:res.expiry,proSince:res.proSince,processedAt:Date.now(),gateway:'stripe',eventId:evt.id,invoice:true},env).catch(e=>console.error('[webhook] invoice marker write:',e.message)));}catch(e){console.error('[webhook] invoice grantPro:',e.message);return jr({error:e.message},500);}}
+}
+return jr({received:true},200);
+}
+if(type==='customer.subscription.updated'||type==='customer.subscription.deleted'){
+const sub=evt.data&&evt.data.object;
+const uid=((sub&&sub.metadata&&sub.metadata.uid)||'').substring(0,128);
+if(uid){const periodEnd=((sub.current_period_end||0)*1000)||Date.now();const now=Date.now();const patch={proExpiry:periodEnd};if(sub.status==='canceled'&&periodEnd<=now)patch.isPro=false;await fbPatch('users/'+uid,patch,env).catch(e=>console.error('[webhook] subscription status patch:',e.message));await fbPush('hq/proActivations',{uid,paymentId:sub.id||'stripe-sub',activatedAt:now,expiry:periodEnd,source:type,cancelAtPeriodEnd:!!sub.cancel_at_period_end,status:sub.status||''},env).catch(e=>console.error('[webhook] subscription log push:',e.message));}
+return jr({received:true},200);
+}
+return jr({received:true},200);}
 
 /* ── /expire ───────────────────────────────────────────────────────────────── */
 if(url.pathname==='/expire'&&request.method==='POST'){const token=request.headers.get('X-Firebase-Token');let uid;try{uid=await getUidFromToken(token,FIREBASE_WEB_API_KEY);}catch(e){return jr({error:'Auth: '+e.message},401);}let userData;try{userData=await fbGet('users/'+uid,env);}catch(e){console.error('[expire] DB read:',e.message);return jr({error:'DB read: '+e.message},502);}if(!userData||!userData.isPro)return jr({status:'not_pro'},200);if(!userData.proExpiry||userData.proExpiry>Date.now())return jr({status:'still_active',expiry:userData.proExpiry},200);try{await fbPatch('users/'+uid,{isPro:false},env);}catch(e){console.error('[expire] DB write:',e.message);return jr({error:'DB write: '+e.message},500);}await fbPush('hq/proExpirations',{uid,expiredAt:Date.now(),wasExpiry:userData.proExpiry},env).catch(e=>console.error('[expire] proExpirations push:',e.message));return jr({status:'expired'},200);}

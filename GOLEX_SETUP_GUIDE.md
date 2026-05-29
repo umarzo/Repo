@@ -21,7 +21,7 @@
 - Backend: Cloudflare Worker (serverless, handles all sensitive API calls)
 - Database: Firebase Realtime Database
 - Auth: Firebase Authentication (Email + Google)
-- Payments: Cashfree
+- Payments: Stripe (native primary gateway)
 - AI Assistant (Nova): Groq API (LLaMA)
 - Voice/Video calls: WebRTC + Metered.live TURN servers
 
@@ -37,7 +37,7 @@ All are free to start except where noted.
 3. **Cloudflare** — cloudflare.com (free plan is enough)
 4. **Groq** — console.groq.com (free tier available)
 5. **Metered.live** — metered.ca (has a free tier)
-6. **Cashfree** — merchant.cashfree.com (required for payments)
+6. **Stripe** — dashboard.stripe.com (required for payments)
 7. **GitHub** — github.com (to host code)
 8. **Netlify** — netlify.com (free tier is enough)
 9. **Domain registrar** — namecheap.com or cloudflare.com/domains (~$10–15/year)
@@ -166,21 +166,39 @@ Authentication → Users → copy your UID from the table.
 
 ---
 
-## PART 6 — CASHFREE SETUP (Payments)
+## PART 6 — STRIPE SETUP (Payments)
 
-1. Go to merchant.cashfree.com → create merchant account
-2. Complete KYC verification (required for live payments)
-3. Dashboard → **Developers** → **API Keys**
-4. Copy your **App ID** and **Secret Key** from the **Production** tab
-   **Save both.**
+**Stripe is now the native, primary payment architecture for Golex.**
+Use Stripe Checkout + recurring subscription billing for global multi-currency processing.
 
-**Set up webhook:**
-1. Dashboard → **Developers** → **Webhooks**
-2. Click **Add Webhook**
-3. URL: `https://YOUR-WORKER-URL/webhook`
-   (You'll get the Worker URL in Part 7 — come back to this step)
-4. Events: enable **PAYMENT_SUCCESS_WEBHOOK**
-5. Save
+### 6.1 Create Product + Recurring Price
+1. Go to dashboard.stripe.com → create/sign in to your Stripe account
+2. Use **Test mode** first (toggle at top right)
+3. Left sidebar → **Product catalog** → **Add product**
+4. Product name: `Golex Pro`
+5. Pricing model: **Recurring**
+6. Amount: `4.99`
+7. Billing period: **Monthly**
+8. Currency: choose your default (recommended: `USD`)
+9. Save product and copy the generated **Price ID** (starts with `price_`)
+
+### 6.2 Get API Keys
+1. Stripe dashboard → **Developers** → **API keys**
+2. Copy:
+   - **Publishable key** (`pk_test_...` / `pk_live_...`)
+   - **Secret key** (`sk_test_...` / `sk_live_...`)
+3. Keep secret key private (Worker env only).
+
+### 6.3 Set Up Stripe Webhook Endpoint
+1. Stripe dashboard → **Developers** → **Webhooks** → **Add endpoint**
+2. Endpoint URL: `https://YOUR-WORKER-URL/webhook`
+3. Select these events:
+   - `checkout.session.completed`
+   - `invoice.payment_succeeded`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+4. Save endpoint
+5. Open the endpoint details page → copy **Signing secret** (`whsec_...`)
 
 ---
 
@@ -221,14 +239,15 @@ This is critical. The Worker reads all secrets from env vars — never hardcoded
 | `ALLOWED_ORIGIN` | `https://yourdomain.com` | Your exact domain, no trailing slash |
 | `GROQ_API_KEY` | `gsk_...` | From Part 4 |
 | `METERED_API_KEY` | your Metered API key | From Part 5 |
-| `CASHFREE_APP_ID` | your Cashfree App ID | From Part 6 |
-| `CASHFREE_SECRET_KEY` | your Cashfree Secret Key | From Part 6 |
-| `CASHFREE_ENV` | `production` | Use `sandbox` for testing |
+| `STRIPE_SECRET_KEY` | `sk_test_...` (or `sk_live_...`) | From Part 6.2 |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_...` | From Part 6.3 |
+| `STRIPE_PRICE_ID` | `price_...` | Monthly Golex Pro price from Part 6.1 |
+| `STRIPE_DEFAULT_CURRENCY` | `usd` (or your ISO code) | Used when price ID is not set |
 
-3. Mark `FIREBASE_DB_SECRET`, `GROQ_API_KEY`, `CASHFREE_SECRET_KEY` as **Encrypt** (checkbox)
+3. Mark `FIREBASE_DB_SECRET`, `GROQ_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` as **Encrypt** (checkbox)
 4. Click **Save and deploy**
 
-### 7.3 Go Back and Finish Cashfree Webhook
+### 7.3 Go Back and Finish Stripe Webhook
 Now that you have your Worker URL:
 - Return to Part 6 webhook setup
 - Set the URL to: `https://YOUR-WORKER-URL/webhook`
@@ -268,15 +287,27 @@ WORKER_URL: 'https://muddy-sun-1035.umarzo1001.workers.dev/',
 Replace with your new Worker URL from Part 7.1.
 **Keep the trailing slash.**
 
-### 8.5 Cashfree Mode (Line ~37453)
+### 8.5 Stripe Keys in Frontend Pro Config (Line ~37453)
 Find:
 ```
-MODE: 'production',
+STRIPE_PUBLISHABLE_KEY: 'pk_test_REPLACE_ME',
 ```
-- Keep as `'production'` for live payments
-- Change to `'sandbox'` if you want to test first
+- Replace with your Stripe publishable key (`pk_test_...` for testing, `pk_live_...` for production)
+- Keep `AMOUNT_CENTS: 499` as default, or adjust to match your Stripe dashboard pricing
 
-### 8.6 Domain References (Lines ~21–36)
+### 8.6 Stripe Key/Variable Mapping (exact ownership handoff checklist)
+Update these exact locations after takeover:
+
+| Location | Variable | Replace with |
+|---|---|---|
+| `golex.html` (`GOLEX_PRO` object) | `STRIPE_PUBLISHABLE_KEY` | Your Stripe publishable key (`pk_test_...` / `pk_live_...`) |
+| Cloudflare Worker env | `STRIPE_SECRET_KEY` | Your Stripe secret key (`sk_test_...` / `sk_live_...`) |
+| Cloudflare Worker env | `STRIPE_WEBHOOK_SECRET` | Your Stripe endpoint signing secret (`whsec_...`) |
+| Cloudflare Worker env | `STRIPE_PRICE_ID` | Your monthly recurring Stripe price ID (`price_...`) |
+| Cloudflare Worker env | `STRIPE_DEFAULT_CURRENCY` | Your default 3-letter currency code (`usd`, `eur`, etc.) |
+| Cloudflare Worker env | `ALLOWED_ORIGIN` | Your production domain (used in Stripe success/cancel URLs) |
+
+### 8.7 Domain References (Lines ~21–36)
 Find and replace all occurrences of `axikora.me` with `yourdomain.com`:
 - Line 21: canonical URL
 - Line 22: og:url
@@ -288,7 +319,7 @@ Find and replace all occurrences of `axikora.me` with `yourdomain.com`:
 
 Now open `hq.html` in your text editor:
 
-### 8.7 Firebase Config in HQ (Lines ~1839–1848)
+### 8.8 Firebase Config in HQ (Lines ~1839–1848)
 Find:
 ```javascript
 const FIREBASE_CONFIG = {
@@ -298,7 +329,7 @@ const FIREBASE_CONFIG = {
 ```
 Replace the entire FIREBASE_CONFIG with your new Firebase config from Part 2.5.
 
-### 8.8 Admin UID in HQ (Lines ~1882–1884)
+### 8.9 Admin UID in HQ (Lines ~1882–1884)
 Find:
 ```javascript
 const HARDCODED_ADMIN_UIDS = [
@@ -312,7 +343,7 @@ Replace `"KTxJLIgjLcNx1pD1daq2sdveOc13"` with **your own Firebase UID**.
 
 Now open `manifest.json`:
 
-### 8.9 Update manifest.json
+### 8.10 Update manifest.json
 Replace all occurrences of `axikora.me` with your domain.
 Update `start_url` and `scope` to match your deployment URL.
 
@@ -447,8 +478,9 @@ Go through each item. Don't launch until all pass.
 
 **Payments:**
 - [ ] Pro upgrade button shows
-- [ ] Cashfree payment sheet opens
-- [ ] (Test in sandbox mode first before going live)
+- [ ] Stripe Checkout opens
+- [ ] Webhook events arrive in Stripe endpoint logs
+- [ ] (Test in Stripe test mode first before going live)
 - [ ] Pro badge appears after payment
 - [ ] Pro expires after 30 days
 
@@ -463,11 +495,11 @@ Go through each item. Don't launch until all pass.
 
 ## PART 13 — IMPORTANT SECURITY NOTES
 
-- **Never share** your `FIREBASE_DB_SECRET` or `CASHFREE_SECRET_KEY` with anyone
+- **Never share** your `FIREBASE_DB_SECRET`, `STRIPE_SECRET_KEY`, or `STRIPE_WEBHOOK_SECRET` with anyone
 - **Never commit** these secrets to GitHub — they live only in Cloudflare Worker env vars
 - **The Worker is your security layer** — all payment and notification writes go through it
 - **Only your admin UID** can access HQ — keep this account's password strong
-- **Cashfree webhook** must point to your Worker `/webhook` — if it points nowhere, Pro grants via webhook won't work (the `/activate` fallback still handles it, but webhook is the safety net)
+- **Stripe webhook** must point to your Worker `/webhook` — if it points nowhere, subscription renewals/cancellations and backup Pro grants won't sync correctly
 - **ALLOWED_ORIGIN in the Worker** must exactly match your domain — this blocks any other website from calling your Worker with a stolen user token
 
 ---
@@ -482,12 +514,13 @@ Summary of every value you must replace in the code:
 | `golex.html` line ~19170 | Old reCaptcha site key | Your reCaptcha v3 site key |
 | `golex.html` line ~20127 | Old Google One Tap Client ID | Your OAuth Client ID |
 | `golex.html` line ~37452 | Old Worker URL | Your Cloudflare Worker URL |
+| `golex.html` line ~37453 | `STRIPE_PUBLISHABLE_KEY` placeholder | Your Stripe publishable key |
 | `golex.html` lines ~21–36 | `axikora.me` | Your domain |
 | `hq.html` lines ~1839–1848 | Old Firebase config | Your new Firebase config |
 | `hq.html` line ~1883 | Old admin UID | Your Firebase UID |
 | `cloudflare-worker.js` line 18 | `golex` (Metered app name) | Your Metered app name |
 | `manifest.json` | `axikora.me` | Your domain |
-| Cloudflare Worker env | All 9 variables | Your own keys (see Part 7.2) |
+| Cloudflare Worker env | All 10 variables | Your own keys (see Part 7.2) |
 
 ---
 
@@ -503,7 +536,7 @@ The most common setup mistakes are:
 - Forgetting the trailing slash on `WORKER_URL`
 - `ALLOWED_ORIGIN` not matching the exact domain (http vs https, trailing slash)
 - Not deploying updated Firebase rules
-- Cashfree webhook not pointed at the Worker
+- Stripe webhook not pointed at the Worker
 
 ---
 

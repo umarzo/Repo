@@ -4539,7 +4539,7 @@ async function renderProStats() {
     const totalSnap = await db.ref('hq/proActivations').once('value');
     const total = totalSnap.exists() ? Object.keys(totalSnap.val()).length : active;
     document.getElementById('pro-stat-active').textContent   = active;
-    document.getElementById('pro-stat-revenue').textContent  = '₹' + (active * 249).toLocaleString('en-IN');
+    document.getElementById('pro-stat-revenue').textContent  = '$' + (active * 4.99).toFixed(2);
     document.getElementById('pro-stat-expired').textContent  = expired;
     document.getElementById('pro-stat-total').textContent    = total;
   } catch(e) {
@@ -4592,7 +4592,7 @@ async function renderProUsersTable() {
     container.innerHTML = `<div style="overflow-x:auto;">
       <table class="pro-table">
         <thead><tr>
-          <th>User</th><th>UID</th><th>Status</th><th>Since</th><th>Expires</th><th>Cashfree Order ID</th><th>Actions</th>
+          <th>User</th><th>UID</th><th>Status</th><th>Since</th><th>Expires</th><th>Stripe Payment Ref</th><th>Actions</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -4617,7 +4617,7 @@ async function renderProActivationLog() {
         <span class="pro-log-icon">⚡</span>
         <div>
           <div><strong>@${escHqHtml(item.username||'?')}</strong> activated Pro</div>
-          <div class="pro-log-meta">${dateStr} · ${escHqHtml(item.email||'')} · Cashfree: ${escHqHtml(item.paymentId||'manual')}</div>
+          <div class="pro-log-meta">${dateStr} · ${escHqHtml(item.email||'')} · Stripe: ${escHqHtml(item.paymentId||'manual')}</div>
         </div>
       </div>`;
     }).join('');
