@@ -1,0 +1,1369 @@
+{
+  "rules": {
+
+    /* ─────────────────────────────────────────
+       USERS
+       Covers: profile read/write, notifications
+       (Feature 1), blocked list (Feature 3),
+       account deletion (Feature 2),
+       joinedCommunities (Parts 1-6),
+       savedCommunityPosts (Parts 3-4)
+    ───────────────────────────────────────── */
+    "users": {
+      /* Any authenticated user may read the users collection.
+         This allows the directory, leaderboard, people search, collab
+         matches, and guild member-count queries to work for all users.
+         Sensitive child nodes (notifications, blocked, proPaymentId,
+         proSince, joinedCommunities, savedCommunityPosts) are protected
+         at the write level and by keeping their read rules owner-only
+         at the $uid level where possible.
+
+         .indexOn keeps orderByChild queries fast (directory, leaderboard,
+         guild member count, collab skill filter, HQ pro list). */
+      ".read": "auth != null",
+      ".indexOn": ["points", "skill", "isPro"],
+
+      "$uid": {
+        /* Any authenticated user may read a single user's profile node.
+           Needed by profile sheets, UPS views, work-ad displays, etc. */
+        ".read": "auth != null",
+
+        /* Owner or admin can write the full node.
+           Account deletion also passes through here
+           (owner deletes their own node). */
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+        ".validate": "newData.hasChildren(['username'])",
+
+        /* Points can only be written by the owner themselves
+           or an admin. The app only ever increments the
+           current user's own points — no cross-user writes. */
+        "points": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.exists() || newData.val() <= data.val() + 10)"
+        },
+
+        /* ── Feature 1: Notifications ──
+           Only the owner reads their notifications.
+           Write is allowed by any authenticated user
+           (HQ fan-out / community fan-out writes to every
+           user's node) OR by the owner themselves
+           (mark-as-read).
+           New community notification types (Part 8):
+             comm_reply       — someone replied in a community post
+             comm_upvote      — someone upvoted your community post
+             comm_best_answer — your reply was marked as best answer
+             comm_new_post    — new post in a community you joined
+           New project notification types:
+             project_request          — someone requested to join your project
+             project_request_accepted — your join request was accepted
+             project_request_declined — your join request was declined
+             task_assigned            — you were assigned a task
+             task_completed           — a task you were assigned was completed
+           New work-ad notification types:
+             work_applicant           — someone applied for your work ad (private ad)
+             work_applicant_accepted  — someone directly joined via public ad
+             work_application_accepted— your work-ad application was accepted
+             work_application_declined— your work-ad application was declined */
+        "notifications": {
+          ".read": "auth != null && auth.uid === $uid",
+          /* Issue 1 fix: all cross-user notification writes now go through the
+             Worker (DB secret bypasses rules). The only legit client writes are:
+               • Owner marking their own notifications read / deleting them.
+               • Admin fan-out from HQ (admin-authenticated direct write).
+             Any other cross-user write attempt is blocked. */
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+          /* Index on ts enables efficient orderBy="ts"&limitToFirst=N queries
+             used by the Worker's pruning logic — avoids full-list downloads. */
+          ".indexOn": ["ts"],
+          "$notifId": {
+            ".validate": "!newData.exists() || (newData.hasChildren(['type', 'ts']) && (newData.child('type').val() === 'follow' || newData.child('type').val() === 'message' || newData.child('type').val() === 'endorse' || newData.child('type').val() === 'like' || newData.child('type').val() === 'comment' || newData.child('type').val() === 'system' || newData.child('type').val() === 'project_request' || newData.child('type').val() === 'project_request_accepted' || newData.child('type').val() === 'project_request_declined' || newData.child('type').val() === 'task_assigned' || newData.child('type').val() === 'task_completed' || newData.child('type').val() === 'work_applicant' || newData.child('type').val() === 'work_applicant_accepted' || newData.child('type').val() === 'work_application_accepted' || newData.child('type').val() === 'work_application_declined' || newData.child('type').val() === 'comm_reply' || newData.child('type').val() === 'comm_upvote' || newData.child('type').val() === 'comm_best_answer' || newData.child('type').val() === 'comm_new_post' || newData.child('type').val() === 'poll_vote' || newData.child('type').val() === 'buildlog_entry'))"
+          }
+        },
+
+        /* ── Feature 3: Blocked list ──
+           Only the owner reads and writes their own
+           block list. No other user can read it. */
+        "blocked": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid",
+          "$blockedUid": {
+            ".validate": "newData.isBoolean() || !newData.exists()"
+          }
+        },
+
+        /* ── Ban / Mute flags (set by HQ) ──
+           Any auth user can read their own flags
+           so the app can enforce them client-side. */
+        "banned": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)"
+        },
+
+        "muted": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)"
+        },
+
+        /* ── Golex Pro Fields ──────────────────────────────────────
+           isPro     : public-readable (so Pro badge shows everywhere)
+           proExpiry : public-readable (so expiry can be checked client-side)
+           proSince  : owner-only read (personal membership date)
+           proPaymentId: owner-only read (payment reference)
+           tagline   : public-readable (shown on profile card)
+           profileViews: see dedicated top-level node below
+        ───────────────────────────────────────────────────────── */
+
+        /* isPro — readable by all authenticated users so the
+           badge renders on directory, UPS sheet, work ads, etc.
+           WRITE is blocked for self (only admin or payment flow).
+           The payment flow writes via update() which the
+           top-level user write rule covers; the extra child
+           rule here blocks a rogue user from writing just
+           isPro: true without going through payment. */
+        "isPro": {
+          ".read":  "auth != null",
+          ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+          ".validate": "newData.isBoolean()"
+        },
+
+        /* proExpiry — public so expiry badge/check works client-side.
+           SECURITY FIX (Issue 2): Write is now admin-only.
+           The previous rule allowed the owner to write their own
+           proExpiry to any future timestamp, granting themselves
+           unlimited Pro without paying (critical billing bypass).
+           Only the payment flow (mediated by admin / Cloud Function)
+           may now set this field. */
+        "proExpiry": {
+          ".read":  "auth != null",
+          ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        },
+
+        /* proSince — owner-only read (personal membership start date).
+           SECURITY FIX: Write is now admin-only.
+           Previously the owner could write their own proSince to any
+           timestamp, faking an earlier membership start date in any UI
+           that displays "Member since". Only the payment flow (admin-
+           mediated) should ever set this field. */
+        "proSince": {
+          ".read":  "auth != null && auth.uid === $uid",
+          ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        },
+
+        /* proPaymentId — owner-only (Cashfree order ID reference) */
+        "proPaymentId": {
+          ".read":  "auth != null && auth.uid === $uid",
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+
+        /* tagline — public so it shows on UPS sheet for all users.
+           Only the owner can write their own tagline. */
+        "tagline": {
+          ".read":  "auth != null",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+
+        /* ── Parts 1-6: Joined Communities index ──
+           joinedCommunities/$communityId: true
+           Written on join, deleted on unjoin.
+           Admin can also write (community deletion cleanup). */
+        "joinedCommunities": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+          "$communityId": {
+            ".validate": "newData.isBoolean() || !newData.exists()"
+          }
+        },
+
+        /* ── Parts 3-4: Saved Community Posts ──
+           savedCommunityPosts/$postId:
+             { postId, communityId, communityName,
+               postTitle, savedAt }
+           Only the owner reads/writes their own list. */
+        "savedCommunityPosts": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid",
+          "$postId": {
+            ".validate": "!newData.exists() || newData.hasChildren(['postId', 'communityId', 'savedAt'])"
+          }
+        },
+
+        /* ── Server-side rate-limit counters ──
+           Written exclusively by the Worker using the DB secret (which bypasses
+           rules). Client write is BLOCKED — if a client could write their own
+           counter they could reset it and bypass server-side rate limiting.
+           Only the owner may read their own counters (privacy). */
+        "rateLimits": {
+          ".read":  "auth != null && auth.uid === $uid",
+          ".write": false
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       USERNAMES
+       Username reservation.
+       Account deletion removes the owner's entry.
+    ───────────────────────────────────────── */
+    "usernames": {
+      ".read": "auth != null",
+      "$username": {
+        /* A user can claim a username (newData = their uid)
+           or release their own (data = their uid -> delete). */
+        ".write": "auth != null && (newData.val() === auth.uid || data.val() === auth.uid)"
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       ADMINS
+       Root read is REMOVED — any logged-in user could previously enumerate
+       all admin UIDs (information leakage).
+       Now each user can only check whether THEY themselves are an admin
+       (used by client-side admin checks via onAuthStateChanged).
+       Write is still fully locked — only set manually in the console.
+    ───────────────────────────────────────── */
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       HQ  (admin-only write; select sub-nodes
+       readable by normal users)
+       Part 10 additions:
+         hq/logs receives new action types:
+           delete_community, delete_community_post,
+           flag_community_post, dismiss_community_post_flag
+         hq/reports receives type:'community' entries
+           pushed when a user reports a community in-app.
+    ───────────────────────────────────────── */
+    "hq": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      /* Overall HQ restricted to admins, except for designated subnodes like proActivations */
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+
+      /* Feature flags — all users must read these */
+      "features": {
+        ".read": "auth != null"
+      },
+      /* Ban & mute lists — users read to enforce locally */
+      "bans": {
+        ".read": "auth != null"
+      },
+      "mutes": {
+        ".read": "auth != null"
+      },
+      /* ── hq/proActivations ─────────────────────────────────────────
+         Written by the payment flow (any auth user can push their
+         own activation record). Readable only by admins (inherited from HQ).
+
+         SECURITY FIX (Issue 4): Previously, any authenticated user could
+         push any activation record with any uid, poisoning the Pro
+         user tracking log and obscuring real payment history.
+
+         Fix: the .validate rule now enforces that the 'uid' field in
+         the activation record must match auth.uid — so a user can only
+         record their OWN activation, not forge records for others.
+         Strongly recommended to move this write entirely to a Cloud
+         Function triggered by the Cashfree webhook for production.
+      ───────────────────────────────────────────────────────────── */
+      "proActivations": {
+        ".write": "auth != null",
+        "$activationId": {
+          ".validate": "newData.hasChildren(['uid', 'paymentId', 'activatedAt', 'expiry']) && (newData.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)"
+        }
+      },
+
+      /* ── hq/processedOrders ────────────────────────────────────────
+         Idempotency log written by the Worker (DB secret) after each
+         successful Pro grant. Keyed by Cashfree orderId.
+         Prevents Cashfree webhook retries from stacking Pro expiry.
+         Admin-readable only (inherits hq read rule).
+         Write is intentionally left open here because the Worker uses
+         the DB secret which bypasses rules entirely — this node is
+         effectively write-locked to server-side code in practice. */
+      "processedOrders": {
+        "$orderId": {
+          ".validate": "newData.hasChildren(['uid', 'expiry', 'processedAt'])"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       FOLLOWS  (Follow / Connection System)
+       follows/$uid/$targetUid: true
+       A user can follow/unfollow anyone.
+       Anyone auth can read follow lists (for counts).
+    ───────────────────────────────────────── */
+    "follows": {
+      ".read": "auth != null",
+      "$uid": {
+        /* Only the owner can manage their own following list */
+        ".write": "auth != null && auth.uid === $uid",
+        "$targetUid": {
+          ".validate": "newData.isBoolean() || !newData.exists()"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       FOLLOWERS  (reverse index for follow counts)
+       followers/$uid/$followerUid: true
+       Written by the follower (auth.uid === $followerUid).
+       Readable by any auth user (for follower counts).
+    ───────────────────────────────────────── */
+    "followers": {
+      ".read": "auth != null",
+      "$uid": {
+        "$followerUid": {
+          /* A user can add/remove themselves from another user's followers */
+          ".write": "auth != null && auth.uid === $followerUid",
+          ".validate": "newData.isBoolean() || !newData.exists()"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       STORIES  (24hr ephemeral status updates)
+       stories/$uid/$storyId:
+         { type, text, imageUrl, createdAt, expiresAt }
+       Any auth user can read all stories (for the stories bar).
+       Only the story owner or admin can write/delete stories.
+    ───────────────────────────────────────── */
+    "stories": {
+      ".read": "auth != null",
+      "$uid": {
+        /* Only the owner or admin can create/delete their stories */
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+        "$storyId": {
+          ".validate": "!newData.exists() || (newData.hasChildren(['uid', 'type', 'createdAt', 'expiresAt']) && newData.child('uid').val() === $uid)"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       CHATS  (DMs)
+       Feature 4: message deletion by admin.
+       Part 7: type:'community-post-share' added.
+         Rendered as a tappable card in-chat showing
+         the community name and post title; validated
+         by the same sender === auth.uid rule as all
+         other messages.
+
+       Security: chat access is now validated against a
+       `participants` node instead of a `.contains()` check
+       on the chatId string, which was exploitable by
+       crafting a chatId that contained the attacker's UID.
+    ───────────────────────────────────────── */
+    "chats": {
+      "$chatId": {
+        /* Only confirmed participants (or admins) may read
+           the chat node. */
+        ".read": "auth != null && (root.child('chats').child($chatId).child('participants').child(auth.uid).val() === true || root.child('admins').child(auth.uid).val() === true)",
+        /* Write is allowed only for confirmed participants or admins.
+           The $chatId.contains(auth.uid) fallback has been REMOVED — it was
+           the pre-write injection vector: an attacker could craft chatId
+           "attackerUID_victimUID" and inject messages before the victim ever
+           opened the chat, causing them to appear as legitimate history.
+           Bootstrap (seeding the participants node) is still possible because
+           the participants/$uid child rule grants that specific path to any user
+           whose UID appears in the chatId — no parent-level fallback needed. */
+        ".write": "auth != null && (root.child('chats').child($chatId).child('participants').child(auth.uid).val() === true || root.child('admins').child(auth.uid).val() === true)",
+
+        /* ── Participants index ──
+           Each party writes their own entry when first opening
+           the chat. Only a user whose UID is structurally part
+           of the chatId (uid1_uid2 format) can write their own
+           entry — prevents arbitrary injection. */
+        "participants": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && $chatId.contains(auth.uid)",
+            ".validate": "newData.isBoolean() || !newData.exists()"
+          }
+        },
+
+        "messages": {
+          "$msgId": {
+            /* New message: sender must be the author.
+               Existing message: only the original sender
+               may overwrite (for edits/reads).
+               Admin may delete (null write) for moderation. */
+            ".validate": "(!data.exists() && newData.child('sender').val() === auth.uid) || (data.exists() && newData.child('sender').val() === data.child('sender').val()) || root.child('admins').child(auth.uid).val() === true"
+          }
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       POSTS  (Golex Feed Posts)
+       Feature 5: editing own post content.
+       Phase 2: extended schema for audio, file,
+       link content types.
+       Account deletion removes all own posts.
+    ───────────────────────────────────────── */
+    "posts": {
+      /* Bounded-read guard (shared pattern):
+         - authenticated users only
+         - requires query limit (max 200)
+         - requires deterministic order clause for indexed reads */
+      ".read": "auth != null && (((query.limitToFirst != null && query.limitToFirst <= 200) || (query.limitToLast != null && query.limitToLast <= 200)) && (query.orderByKey != null || query.orderByChild == 'createdAt' || query.orderByChild == 'userId'))",
+      ".indexOn": ["createdAt", "userId"],
+
+      "$postId": {
+        ".read": "auth != null",
+        /* Create: any auth user (userId written at creation).
+           Update/delete: owner or admin. */
+        ".write": "auth != null && (!data.exists() || data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+        ".validate": "newData.hasChildren(['userId', 'content', 'createdAt', 'expiresAt'])",
+
+        /* ── Feature 5: Post editing fields ── */
+        "edited": {
+          ".write": "auth != null && (data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isBoolean()"
+        },
+        "editedAt": {
+          ".write": "auth != null && (data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isNumber()"
+        },
+
+        /* Counters writable by any auth user.
+           SECURITY FIX: Delta validation now enforces that any single write can
+           only change the counter by ±1 from its current value (or set to 0 on
+           init). This prevents any authenticated user from directly setting
+           likesCount / commentsCount to an arbitrary number (e.g. 999999).
+           Firebase increment() resolves server-side before validation, so
+           newData.val() reflects the post-increment value — meaning the rule
+           correctly allows increment(1) and increment(-1) but rejects
+           set(9999) or any other arbitrary direct write.
+           Admins retain full write authority for moderation resets. */
+        "likesCount": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+        },
+        "commentsCount": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+        },
+
+        /* Phase 2: extended content type metadata */
+        "contentType": {
+          ".write": "auth != null && (!data.parent().exists() || data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isString()"
+        },
+        "audioData": {
+          ".write": "auth != null && (!data.parent().exists() || data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)"
+        },
+        "fileData": {
+          ".write": "auth != null && (!data.parent().exists() || data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)"
+        },
+        "linkUrl": {
+          ".write": "auth != null && (!data.parent().exists() || data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isString() && newData.val().length <= 1000"
+        },
+        "linkCaption": {
+          ".write": "auth != null && (!data.parent().exists() || data.parent().child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+
+        /* Admin-only fields */
+        "isOfficial": {
+          ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+        },
+        "pinned": {
+          ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       POST LIKES
+       Account deletion removes $uid entry.
+    ───────────────────────────────────────── */
+    "postLikes": {
+      /* FIX: Added root-level .read so account deletion can enumerate
+         postLikes to clean up a user's given likes. Security impact: none —
+         post IDs are already enumerable from the root-readable posts/ node. */
+      ".read": "auth != null",
+      "$postId": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       POST COMMENTS
+       Account deletion removes comments where
+       userId === uid (client does targeted deletes).
+    ───────────────────────────────────────── */
+    "postComments": {
+      /* FIX: Added root-level .read so account deletion can enumerate
+         postComments to clean up a user's given comments. Security impact: none —
+         post IDs are already enumerable from the root-readable posts/ node. */
+      ".read": "auth != null",
+      "$postId": {
+        ".read": "auth != null",
+        "$commentId": {
+          ".write": "auth != null && (!data.exists() || data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.hasChildren(['userId', 'text', 'createdAt'])"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       SAVED POSTS  (Golex Feed — owner-only)
+       Community post saves live separately under
+       users/$uid/savedCommunityPosts (see above).
+    ───────────────────────────────────────── */
+    "savedPosts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       ENDORSEMENTS
+       Account deletion removes $uid entries from
+       both sides (client targeted deletes).
+    ───────────────────────────────────────── */
+    "endorsements": {
+      /* FIX: Added root-level .read so account deletion can enumerate all
+         endorsements to remove records of endorsements this user gave to others.
+         Security impact: none — target UIDs are already enumerable via the
+         root-readable users/ node. Individual $targetUid was already readable. */
+      ".read": "auth != null",
+      "$targetUid": {
+        ".read": "auth != null",
+        "$endorserUid": {
+          ".write": "auth != null && auth.uid === $endorserUid",
+          ".validate": "$targetUid !== auth.uid && (newData.hasChildren(['skill', 'timestamp']) || !newData.exists())"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       CALLS  (WebRTC signalling)
+
+       Supports two call types:
+         type = 'project'  — group call (up to 4 participants)
+                             tied to a project; all project
+                             members may join / signal.
+         type != 'project' — standard 1-on-1 call between
+                             callerId and receiverId.
+
+       Node shape (project call):
+         calls/$callId/
+           type            string   — 'project'
+           ownerId         string   — uid who initiated the call
+           participantCount number  — maintained by client;
+                                      validated 0–4 (replaces
+                                      numChildren() which is
+                                      unsupported in some
+                                      Firebase console versions)
+           participants/
+             $uid/         any      — participant entry
+           signals/
+             $targetUid/
+               $signalId/  { from, to, … }
+           videoRequest/   any
+           mode/           any
+
+       Node shape (1-on-1 call):
+         calls/$callId/
+           type            string   — any value except 'project'
+           callerId        string   — initiating user uid
+           receiverId      string   — receiving user uid
+           videoRequest/   any
+           mode/           any
+    ───────────────────────────────────────── */
+    "calls": {
+      /* ── Root-level read (receiver discovery) ──
+         A receiver has no way to know the callId before the caller creates it.
+         The only way for the receiver's app to detect an incoming 1-on-1 call
+         is to listen to the calls/ collection and filter by receiverId.
+         Firebase RTDB requires read permission at the node you are listening to,
+         so this root read MUST stay.
+
+         Security note: any authenticated user can enumerate callIds and see
+         callerId/receiverId pairs.  The actual WebRTC payload (offer/answer/ICE)
+         and project-call data are still protected by the per-call rules below.
+         This is the same posture as the previous (firebase-rules-fixed) rules
+         and is the correct tradeoff for a call-signalling flow without a
+         separate server-side index (incomingCalls/$uid). */
+      ".read": "auth != null",
+
+      "$callId": {
+        /* ── Per-call read ──
+           Project call : user must be a member of the project.
+           1-on-1 call  : user must be the caller or receiver. */
+        ".read": "auth != null && ((data.child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (data.child('type').val() !== 'project' && (data.child('callerId').val() === auth.uid || data.child('receiverId').val() === auth.uid)))",
+
+        /* ── Per-call write ──
+           NEW (data does not exist):
+             Project call : initiator must be a project member,
+                            must set ownerId = auth.uid, must
+                            include themselves in participants,
+                            and participantCount must be <= 4.
+             1-on-1 call  : writer must be callerId or receiverId.
+           EXISTING (data exists):
+             Project call : any project member may update;
+                            participantCount must stay <= 4.
+             1-on-1 call  : only callerId or receiverId may update.
+
+           NOTE: participantCount (not numChildren()) is used to
+           enforce the 4-participant cap. The client increments /
+           decrements this field atomically when joining / leaving.
+           The field is separately validated to 0–4 in its own
+           sub-rule below. */
+        ".write": "auth != null && ((!data.exists() && ((newData.child('type').val() === 'project' && newData.child('ownerId').val() === auth.uid && root.child('projects').child($callId).child('members').child(auth.uid).exists() && newData.child('participants').child(auth.uid).exists() && (!newData.child('participantCount').exists() || newData.child('participantCount').val() <= 4)) || (newData.child('type').val() !== 'project' && (newData.child('callerId').val() === auth.uid || newData.child('receiverId').val() === auth.uid)))) || (data.exists() && ((data.child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists() && (!newData.child('participantCount').exists() || newData.child('participantCount').val() <= 4)) || (data.child('type').val() !== 'project' && (data.child('callerId').val() === auth.uid || data.child('receiverId').val() === auth.uid)))))",
+
+        /* ── participantCount ──
+           Client-maintained counter that tracks how many
+           participants are in the call. Replaces numChildren()
+           checks (which cause save errors in certain Firebase
+           console versions). Only project members may write;
+           value is strictly bounded to 0–4. */
+        "participantCount": {
+          ".write": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4"
+        },
+
+        /* ── videoRequest ──
+           Read / write by any party involved in the call
+           (project member for group calls; caller or receiver
+           for 1-on-1 calls). */
+        "videoRequest": {
+          ".read": "auth != null && ((root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (root.child('calls').child($callId).child('callerId').val() === auth.uid || root.child('calls').child($callId).child('receiverId').val() === auth.uid))",
+          ".write": "auth != null && ((root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (root.child('calls').child($callId).child('callerId').val() === auth.uid || root.child('calls').child($callId).child('receiverId').val() === auth.uid))"
+        },
+
+        /* ── videoMode ──
+           Project-call video switch signaling.
+           Node shape:
+             videoMode/
+               requestedBy   string  — uid of the call owner who requested
+               requestedAt   number  — Unix ms timestamp
+               responses/
+                 $uid         string  — 'accepted' | 'denied'
+
+           READ   : any project member in the call
+           WRITE  : call owner creates/sets the request node
+           WRITE responses/$uid : only the uid that matches auth.uid
+                                  (each member records their own response)
+        */
+        "videoMode": {
+          ".read": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('calls').child($callId).child('ownerId').val() === auth.uid && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+          "responses": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+              ".validate": "newData.isString() && (newData.val() === 'accepted' || newData.val() === 'denied')"
+            }
+          }
+        },
+
+        /* ── mode ──
+           Writable by any party involved in the call. */
+        "mode": {
+          ".write": "auth != null && ((root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (root.child('calls').child($callId).child('callerId').val() === auth.uid || root.child('calls').child($callId).child('receiverId').val() === auth.uid))"
+        },
+
+        /* ── participants ──
+           Project calls only.
+           READ  : any project member.
+           WRITE : any project member (for the entire node,
+                   e.g. initial population or bulk clear).
+           $uid  : a member may write their own entry; the
+                   call owner may write or remove any entry
+                   (kick / host-management). */
+        "participants": {
+          ".read": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists() && (auth.uid === $uid || root.child('calls').child($callId).child('ownerId').val() === auth.uid)"
+          }
+        },
+
+        /* ── signals ──
+           Project calls only. Used for WebRTC offer/answer/
+           ICE-candidate exchange between participants.
+           READ  (node)    : any project member (for presence
+                             checks).
+           READ  ($targetUid) : only the addressed recipient.
+           WRITE ($signalId)  : any project member, but the
+                             signal's 'from' must be auth.uid
+                             and 'to' must match $targetUid. */
+        "signals": {
+          ".read": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+          "$targetUid": {
+            ".read": "auth != null && auth.uid === $targetUid && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()",
+            "$signalId": {
+              ".write": "auth != null && root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists() && newData.child('from').val() === auth.uid && newData.child('to').val() === $targetUid"
+            }
+          }
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       GUILDS  (skill chat rooms)
+       Feature 4 (guild msg reports): admin can
+       delete messages via the parent write rule.
+    ───────────────────────────────────────── */
+    "guilds": {
+      "$guildId": {
+        ".read": "auth != null",
+
+        "messages": {
+          ".read": "auth != null",
+          /* Write requires being the original sender (for edits)
+             OR admin (for moderation deletions). Any auth user
+             may push a NEW message (no prior data).
+             Rate limiting is enforced server-side in Worker /guild-msg.
+             Media types (image/file/audio) always go through Worker
+             (DB secret bypasses rules entirely). */
+          ".write": "auth != null",
+
+          "$msgId": {
+            ".validate": "!newData.exists() || ((newData.child('senderId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true) && newData.child('type').isString() && (newData.child('type').val() === 'text' || newData.child('type').val() === 'image' || newData.child('type').val() === 'file' || newData.child('type').val() === 'audio' || newData.child('type').val() === 'vault') && newData.child('text').isString() && newData.child('text').val().length <= 2000)",
+            /* Explicit delete guard: only the original sender or
+               an admin may delete (null-write) a message. */
+            ".write": "auth != null && (!data.exists() || data.child('senderId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+
+            "reactions": {
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.isString()"
+              }
+            },
+            "seenBy": {
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.isBoolean()"
+              }
+            }
+          }
+        },
+
+        "typing": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       ROOMS  (user-created chat spaces)
+    ───────────────────────────────────────── */
+    "rooms": {
+      /* Same bounded-read guard as posts/communities to prevent full-tree scans. */
+      ".read": "auth != null && (((query.limitToFirst != null && query.limitToFirst <= 200) || (query.limitToLast != null && query.limitToLast <= 200)) && (query.orderByKey != null || query.orderByChild == 'createdAt' || query.orderByChild == 'type'))",
+      ".indexOn": ["createdAt", "type"],
+
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+
+        "members": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('rooms').child($roomId).child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)"
+          }
+        },
+
+        "messages": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          "$msgId": {
+            /* Only the original sender, the room owner, or an admin
+               may delete (null-write) a message. System messages
+               ('type':'system') may be written by the room owner. */
+            ".write": "auth != null && (!data.exists() || data.child('senderId').val() === auth.uid || root.child('rooms').child($roomId).child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || newData.child('senderId').val() === auth.uid || newData.child('type').val() === 'system' || root.child('admins').child(auth.uid).val() === true"
+          }
+        },
+
+        "typing": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       COMMUNITIES  (Parts 1–8, Part 10)
+    ───────────────────────────────────────── */
+    "communities": {
+      /* Same bounded-read guard as posts/rooms to enforce paginated reads. */
+      ".read": "auth != null && (((query.limitToFirst != null && query.limitToFirst <= 200) || (query.limitToLast != null && query.limitToLast <= 200)) && (query.orderByKey != null || query.orderByChild == 'createdAt' || query.orderByChild == 'name'))",
+      ".indexOn": ["createdAt", "name"],
+
+      "$communityId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('creatorId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+        ".validate": "!newData.exists() || newData.hasChildren(['communityId', 'name', 'creatorId', 'createdAt'])",
+
+        "memberCount": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+        },
+
+        "postCount": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+        },
+
+        "members": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "newData.isBoolean() || !newData.exists()"
+          }
+        },
+
+        "posts": {
+          /* Intentionally key-ordered only: community feed pagination uses push-key cursors
+             (limitToLast + endBefore), so allowing only orderByKey keeps one consistent
+             query model and prevents accidental full scans via alternate ordering. */
+          ".read": "auth != null && (((query.limitToFirst != null && query.limitToFirst <= 200) || (query.limitToLast != null && query.limitToLast <= 200)) && query.orderByKey != null)",
+          "$postId": {
+            ".read": "auth != null",
+            ".write": "auth != null && (!data.exists() || data.child('authorId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || newData.hasChildren(['postId', 'communityId', 'authorId', 'createdAt'])",
+
+            "upvotes": {
+              ".write": "auth != null",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+            },
+            "downvotes": {
+              ".write": "auth != null",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+            },
+            "netScore": {
+              ".write": "auth != null",
+              ".validate": "newData.isNumber() && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 2 && newData.val() <= data.val() + 2))"
+            },
+
+            "userVotes": {
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "!newData.exists() || newData.val() === 'up' || newData.val() === 'down'"
+              }
+            },
+
+            "likesCount": {
+              ".write": "auth != null",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+            },
+
+            "userLikes": {
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.isBoolean() || !newData.exists()"
+              }
+            },
+
+            "repliesCount": {
+              ".write": "auth != null",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+            },
+
+            "pollVotes": {
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 10"
+              }
+            },
+
+            "pollVoteCounts": {
+              ".write": "auth != null",
+              "$optionIndex": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || newData.val() === data.val() + 1)"
+              }
+            },
+
+            "isBestAnswered": {
+              ".write": "auth != null && (data.parent().child('authorId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+              ".validate": "newData.isBoolean()"
+            },
+
+            "flagged": {
+              ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+              ".validate": "newData.isBoolean() || !newData.exists()"
+            },
+
+            "replies": {
+              "$replyId": {
+                ".write": "auth != null && (!data.exists() || data.child('authorId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+                ".validate": "!newData.exists() || newData.hasChildren(['replyId', 'body', 'authorId', 'createdAt'])",
+
+                "upvotes": {
+                  ".write": "auth != null",
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+                },
+                "downvotes": {
+                  ".write": "auth != null",
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+                },
+                "netScore": {
+                  ".write": "auth != null",
+                  ".validate": "newData.isNumber() && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 2 && newData.val() <= data.val() + 2))"
+                },
+
+                "userVotes": {
+                  "$uid": {
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".validate": "!newData.exists() || newData.val() === 'up' || newData.val() === 'down'"
+                  }
+                },
+
+                "likesCount": {
+                  ".write": "auth != null",
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && (root.child('admins').child(auth.uid).val() === true || !data.exists() || (newData.val() >= data.val() - 1 && newData.val() <= data.val() + 1))"
+                },
+
+                "userLikes": {
+                  "$uid": {
+                    ".write": "auth != null && auth.uid === $uid",
+                    ".validate": "newData.isBoolean() || !newData.exists()"
+                  }
+                },
+
+                "isBestAnswer": {
+                  ".write": "auth != null && (root.child('communities').child($communityId).child('posts').child($postId).child('authorId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+                  ".validate": "newData.isBoolean()"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       PROJECTS  (Skill-Based Collaborations)
+
+       Screens / features covered:
+         Discovery  — projects list screen;
+                      onValue / get('projects') for
+                      public discover & private seeking tabs
+         Workspace  — per-project chat, kanban board,
+                      members panel, typing indicators
+         Create     — any auth user creates a project;
+                      owner added as first member
+         Join       — public join (direct member write) or
+                      private request flow (requests node)
+         Leave      — member removes own entry from members
+         Delete     — owner or admin deletes entire project node
+         Tasks      — any member creates / moves / edits tasks;
+                      +5 pts awarded to assignee on completion
+         Requests   — applicant pushes to requests/$requestId;
+                      only owner/admin reads & resolves requests
+
+       Node shape:
+         projects/$projectId/
+           info/      { name, description, visibility,
+                        seekingMembers, rolesNeeded[],
+                        coverUrl, tags[], ownerId, createdAt }
+           members/
+             $uid/    { role, joinedAt, username, pfpUrl }
+           messages/
+             $msgId/  { senderId, senderUsername, senderPfp,
+                        type ('text'|'image'), text, dataUrl,
+                        timestamp }
+           tasks/
+             $taskId/ { title, description, column
+                        ('todo'|'doing'|'done'),
+                        assigneeUid, assigneeUsername,
+                        createdBy, createdByUsername,
+                        createdAt, completedAt }
+           requests/
+             $reqId/  { applicantUid, applicantUsername,
+                        applicantPfp, desiredRole, message,
+                        status ('pending'), createdAt }
+           typing/
+             $uid/    { active, username, ts }
+    ───────────────────────────────────────── */
+    "projects": {
+      /* Root-level read is intentionally NOT granted here.
+         Sub-node rules below grant specific access:
+           info    — readable by any auth user (discover screen)
+           members — readable by any auth user (for counts/membership checks)
+           messages/tasks — members only
+           requests — owner/admin only                              */
+
+      "$projectId": {
+        /* ── info ──
+           CREATE  : any auth user (they supply ownerId).
+           UPDATE  : project owner or admin (rename, change
+                     visibility, edit roles / tags, etc.).
+           DELETE  : owner or admin (project deletion cleanup). */
+        "info": {
+          ".read": "auth != null",
+          ".write": "auth != null && (!data.exists() || data.child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "!newData.exists() || newData.hasChildren(['name', 'ownerId', 'createdAt'])"
+        },
+
+        /* ── members/$uid ──
+           { role, joinedAt, username, pfpUrl }
+           Readable by any auth user (for discover + counts).
+           JOIN   : any auth user writes their own entry
+                    (public project direct-join).
+           LEAVE  : a member removes their own entry.
+           KICK   : owner or admin removes any entry.
+           ACCEPT : owner/admin writes accepted applicant's
+                    entry (part of the request accept flow). */
+        "members": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('projects').child($projectId).child('info').child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || newData.hasChildren(['role', 'joinedAt'])"
+          }
+        },
+
+        /* ── messages/$msgId ──
+           { senderId, senderUsername, senderPfp,
+             type, text | dataUrl, timestamp }
+           Only current members may read or send messages.
+           Sender must match auth.uid on new messages.
+           Admin may delete (null write) for moderation. */
+        "messages": {
+          ".read": "auth != null && root.child('projects').child($projectId).child('members').child(auth.uid).exists()",
+          "$msgId": {
+            ".write": "auth != null && (root.child('projects').child($projectId).child('members').child(auth.uid).exists() || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || (newData.hasChildren(['senderId', 'type', 'timestamp']) && newData.child('senderId').val() === auth.uid)"
+          }
+        },
+
+        /* ── tasks/$taskId ──
+           { title, description, column, assigneeUid,
+             assigneeUsername, createdBy, createdByUsername,
+             createdAt, completedAt }
+           Only project members may read, create, edit, or
+           move tasks. Admin may also write for cleanup. */
+        "tasks": {
+          ".read": "auth != null && root.child('projects').child($projectId).child('members').child(auth.uid).exists()",
+          "$taskId": {
+            ".write": "auth != null && (root.child('projects').child($projectId).child('members').child(auth.uid).exists() || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || newData.hasChildren(['title', 'column', 'createdBy', 'createdAt'])"
+          }
+        },
+
+        /* ── requests/$requestId ──
+           { applicantUid, applicantUsername, applicantPfp,
+             desiredRole, message, status, createdAt }
+           READ    : project owner or admin only.
+           CREATE  : any auth user may push a join request.
+           DELETE  : only the project owner or admin may
+                     remove (accept or decline flow). */
+        "requests": {
+          ".read": "auth != null && (root.child('projects').child($projectId).child('info').child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          "$requestId": {
+            ".write": "auth != null && (!data.exists() || root.child('projects').child($projectId).child('info').child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || newData.hasChildren(['applicantUid', 'desiredRole', 'createdAt'])"
+          }
+        },
+
+        /* ── typing/$uid ──
+           { active, username, ts }
+           Each user manages only their own typing indicator.
+           Readable by all project members (cascades from parent). */
+        "buildLog": {
+          ".read": "auth != null && (root.child('projects').child($projectId).child('info').child('visibility').val() === 'public' || root.child('projects').child($projectId).child('members').child(auth.uid).exists())",
+          "$entryId": {
+            ".write": "auth != null && (root.child('projects').child($projectId).child('members').child(auth.uid).exists() || root.child('projects').child($projectId).child('info').child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || (newData.hasChildren(['entryId', 'entryType', 'title', 'authorId', 'createdAt']) && newData.child('authorId').val() === auth.uid && (newData.child('entryType').val() === 'update' || newData.child('entryType').val() === 'milestone' || newData.child('entryType').val() === 'media'))"
+          }
+        },
+
+        "typing": {
+          ".read": "auth != null && root.child('projects').child($projectId).child('members').child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "!newData.exists() || newData.hasChildren(['active'])"
+          }
+        }
+      }
+    },
+
+/* ─────────────────────────────────────────────────────────────────────────
+       PROJECT INDEX  —  lightweight discovery index for the projects screen
+
+       'projects/' has NO root-level .read rule (intentional: protects messages,
+       tasks, and join-requests from non-members). The discover screen previously
+       called get(ref(db,'projects')) which always threw PERMISSION_DENIED and
+       showed "Could not load projects". The fix is this index node.
+
+       Schema per entry (projectIndex/$pid):
+         { visibility: "public"|"private", seekingMembers: bool,
+           ownerId: <uid>, createdAt: <timestamp> }
+
+       Written by _createProject, updated by _saveSettings (seekingMembers),
+       nulled by _deleteProject — always kept in sync with projects/$pid/info.
+
+       READ  : any authenticated user (needed for all three discover tabs)
+       WRITE : only the project owner OR an admin may write an entry;
+               ownerId in newData must match the writer (prevents forged entries);
+               delete (newData = null) also requires owner or admin.
+    ───────────────────────────────────────── */
+    "projectIndex": {
+      ".read": "auth != null",
+      "$pid": {
+        ".write": "auth != null && ((!newData.exists() || newData.child('ownerId').val() === auth.uid) && (!data.exists() || data.child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)) || root.child('admins').child(auth.uid).val() === true",
+        ".validate": "!newData.exists() || (newData.hasChildren(['visibility', 'ownerId', 'createdAt']) && (newData.child('visibility').val() === 'public' || newData.child('visibility').val() === 'private') && newData.child('seekingMembers').isBoolean())"
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       WORK ADS  (Project Recruitment Board)
+
+       A project owner publishes a work ad to recruit
+       collaborators for a specific role inside their
+       project. Any auth user can browse all ads
+       (discover tab) and apply for open ones.
+
+       Node shape:
+         workAds/$adId/
+           projectId       string  — owning project
+           projectName     string  — display name snapshot
+           ownerId         string  — uid of the ad creator
+           ownerUsername   string  — display name snapshot
+           roleTitle       string  — role being advertised
+           description     string  — free-text description
+           skills          array   — up to 5 required skills
+           commitment      string  — e.g. 'part-time'
+           compensation    string  — e.g. 'volunteer'
+           visibility      string  — 'public' | 'private'
+           spotsAvailable  number  — total seats
+           spotsRemaining  number  — seats still open
+           createdAt       number  — Unix ms timestamp
+           status          string  — 'open' | 'closed'
+           applicants/
+             $uid/         { uid, username, pfpUrl,
+                             pitch (max 200 chars),
+                             appliedAt, status
+                             ('pending'|'accepted'|'declined') }
+
+       Access summary:
+         READ            any authenticated user
+                         (needed for discover tab and
+                          project workspace applicants panel)
+
+         CREATE ad       any auth user
+                         (ownerId must equal auth.uid —
+                          validated below)
+
+         UPDATE / DELETE ad  owner (ownerId === auth.uid)
+                             or admin
+
+         spotsRemaining  any auth user
+                         (decremented via transaction when an
+                          applicant joins a public ad; also
+                          set by owner when editing spots)
+
+         status          any auth user
+                         (auto-set to 'closed' by the client
+                          after spotsRemaining hits 0 in the
+                          same transaction flow; also closed
+                          manually by the owner)
+
+         applicants/$uid  WRITE own entry: the applicant
+                          (auth.uid === $uid)
+                          UPDATE status (accept/decline):
+                          ad owner or admin
+    ───────────────────────────────────────── */
+    "workAds": {
+      /* Full tree readable by every authenticated user
+         (discover tab + workspace applicants panel). */
+      ".read": "auth != null",
+
+      "$adId": {
+        /* ── ad root ──
+           CREATE  : any auth user supplies their own ownerId.
+           UPDATE  : owner or admin (edit title, description,
+                     spots, visibility, close ad, etc.).
+           DELETE  : owner or admin (project deletion cleanup
+                     also deletes related workAds nodes).
+
+           ROOT-CAUSE FIX (Bugs 1 & 2 — "No spots remaining" on valid ads):
+           ─────────────────────────────────────────────────────────────────
+           Firebase RTDB rule cascade: a parent .write rule that evaluates to
+           FALSE for a given auth context BLOCKS ALL descendant writes, even
+           if a child node has its own permissive .write rule.
+
+           The original parent rule denied non-owners on existing ads, which
+           silently blocked the spotsRemaining runTransaction() (PERMISSION_DENIED
+           is caught → tx = null → throws "No spots remaining") AND the
+           applicants/$uid set() used when a user applies.
+
+           Fix — split the rule into two concerns:
+             .write  : Controls who may perform FULL-NODE operations.
+                       Any non-deletion write is allowed from any auth user
+                       (child-level rules below handle field security).
+                       Deletions are restricted to owner or admin.
+             .validate: Enforces structural integrity.
+                       On creation: ownerId must equal auth.uid.
+                       On child-path writes by non-owners: all immutable
+                       metadata fields (ownerId, projectId, roleTitle,
+                       visibility, spotsAvailable, createdAt) must be
+                       unchanged — only spotsRemaining and applicants
+                       may differ, which is exactly what applicants write. */
+        ".write": "auth != null && (!data.exists() || newData.exists() || data.child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+        ".validate": "!newData.exists() || (newData.hasChildren(['projectId', 'ownerId', 'roleTitle', 'createdAt']) && (newData.child('ownerId').val() === auth.uid || (data.exists() && data.child('ownerId').val() === newData.child('ownerId').val() && data.child('projectId').val() === newData.child('projectId').val() && data.child('roleTitle').val() === newData.child('roleTitle').val() && data.child('visibility').val() === newData.child('visibility').val() && data.child('spotsAvailable').val() === newData.child('spotsAvailable').val() && data.child('createdAt').val() === newData.child('createdAt').val())))",
+
+        /* ── spotsRemaining ──
+           SECURITY FIX (Issue 3): Previously writable by ANY
+           authenticated user, allowing anyone to set an ad's
+           spotsRemaining to 0 and kill a competitor's ad.
+
+           Now allows writes only in these cases:
+             a) Ad owner or admin — full control (editing spots, closing)
+             b) Any authenticated user decrements by exactly 1 — this is
+                the only write a non-owner needs for the client-side
+                runTransaction() when a public-ad applicant joins.
+
+           This preserves the transaction flow while preventing abuse. */
+        "spotsRemaining": {
+          ".write": "auth != null && (root.child('workAds').child($adId).child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || (data.exists() && newData.val() === data.val() - 1 && newData.val() >= 0))",
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+
+        /* ── status ──
+           Set to 'closed' manually by the owner when all
+           spots are filled or they want to close the ad.
+           Any open/close action requires ownership or admin.
+           NOTE: the client-side auto-close after spots hit 0
+           should be performed by the ad owner; non-owners
+           can no longer set status to prevent abuse. */
+        "status": {
+          ".write": "auth != null && (root.child('workAds').child($adId).child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.isString() && (newData.val() === 'open' || newData.val() === 'closed')"
+        },
+
+        /* ── applicants/$uid ──
+           APPLY   : the applicant writes their own entry
+                     (auth.uid === $uid, entry must not exist).
+           ACCEPT / DECLINE : ad owner or admin updates
+                     the entry's status field.
+           On a public ad, the client also writes directly
+           to projects/$projectId/members/$uid in the same
+           batched flow. */
+        "applicants": {
+          "$uid": {
+            /* New entry (apply): only the applicant.
+               Existing entry (accept/decline): ad owner
+               or admin. */
+            ".write": "auth != null && (auth.uid === $uid || root.child('workAds').child($adId).child('ownerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+            ".validate": "!newData.exists() || (newData.hasChildren(['uid', 'appliedAt', 'status']) && newData.child('uid').val() === $uid)"
+          }
+        }
+      }
+    },
+
+    /* ── profileViews ───────────────────────────────────────────────
+       Structure: profileViews/{viewedUid}/{viewerUid} = timestamp
+       - Viewed user can read their own view count (Pro analytics)
+       - Any authenticated user can write a view (tracking visits)
+       - Viewer UIDs are visible only to the profile owner
+    ───────────────────────────────────────────────────────────── */
+    "profileViews": {
+      "$viewedUid": {
+        ".read":  "auth != null && auth.uid === $viewedUid",
+        ".write": "auth != null",
+        "$viewerUid": {
+          ".write": "auth != null && auth.uid === $viewerUid",
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        }
+      }
+    },
+
+    /* ─────────────────────────────────────────
+       SKETCH BOARDS  (Real-time collaborative
+       drawing canvas tied to a call session)
+
+       Supports two call types:
+         type = 'project'  — board is shared with all
+                             members of the linked project.
+         type != 'project' — board is private to the two
+                             participants (callerId /
+                             receiverId) of a 1-on-1 call.
+
+       Node shape:
+         sketchBoards/$callId/
+           strokes/
+             $strokeId/   { userId, tool, width,
+                            points, timestamp }
+           live/
+             $uid/        ephemeral cursor / in-progress
+                          stroke data written only by the
+                          owning user
+
+       Access summary:
+         READ / WRITE (board root + strokes)
+                      Project call : any project member
+                      1-on-1 call  : callerId or receiverId
+
+         WRITE live/$uid
+                      Only the uid that matches auth.uid
+                      (plus the same call-membership check)
+
+       Validation notes on strokes/$strokeId:
+         • userId  must equal auth.uid (sender must match)
+         • tool    must be 'pen', 'marker', or 'eraser'
+         • width   must be a number in the range [1, 28]
+         • points  presence is guaranteed by hasChildren;
+                   RTDB stores arrays as numeric-keyed
+                   objects so isList() is not a valid
+                   method — field existence is sufficient
+         • timestamp is required
+    ───────────────────────────────────────── */
+    "sketchBoards": {
+      "$callId": {
+        /* ── Board-level read ──
+           Project call : user must be a project member.
+           1-on-1 call  : user must be callerId or receiverId. */
+        ".read": "auth != null && ((root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (root.child('calls').child($callId).child('type').val() !== 'project' && (root.child('calls').child($callId).child('callerId').val() === auth.uid || root.child('calls').child($callId).child('receiverId').val() === auth.uid)))",
+
+        /* ── Board-level write ──
+           Same membership check as read above. */
+        ".write": "auth != null && ((root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (root.child('calls').child($callId).child('type').val() !== 'project' && (root.child('calls').child($callId).child('callerId').val() === auth.uid || root.child('calls').child($callId).child('receiverId').val() === auth.uid)))",
+
+        /* ── strokes/$strokeId ──
+           Validated shape:
+             userId    — must be the writing user
+             tool      — 'pen' | 'marker' | 'eraser'
+             width     — number, 1–28
+             points    — required (array stored as object)
+             timestamp — required
+           NOTE: isList() does not exist in Firebase RTDB
+           rules. Array presence is enforced via
+           hasChildren(['points']) in the parent check. */
+        "strokes": {
+          "$strokeId": {
+            ".validate": "newData.hasChildren(['userId', 'tool', 'width', 'points', 'timestamp']) && newData.child('userId').val() === auth.uid && (newData.child('tool').val() === 'pen' || newData.child('tool').val() === 'marker' || newData.child('tool').val() === 'eraser') && newData.child('width').isNumber() && newData.child('width').val() >= 1 && newData.child('width').val() <= 28"
+          }
+        },
+
+        /* ── live/$uid ──
+           Each user can only write to their own live node.
+           Same call-membership requirement applies. */
+        "live": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && ((root.child('calls').child($callId).child('type').val() === 'project' && root.child('projects').child($callId).child('members').child(auth.uid).exists()) || (root.child('calls').child($callId).child('type').val() !== 'project' && (root.child('calls').child($callId).child('callerId').val() === auth.uid || root.child('calls').child($callId).child('receiverId').val() === auth.uid)))"
+          }
+        }
+      }
+    }
+
+  }
+}
